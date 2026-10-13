@@ -14,15 +14,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/satoricorp/tennis" alt="License"></a>
 </p>
 
-Tennis is a CLI for indexing and searching context locally. Context can include files, chat history, and so on, and it embeds and stores everything locally in SQLite. Each search is a merged hybrid of keyword and semantic searches.
+Tennis is a fully local (offline) CLI that indexes and searches your context. Tennis works for most data types, as well as ChatGPT & Claude chats. Tennis embeds and stores everything in both SQLite and in markdown files called 'cards'.
 
 # Getting Started
 
-## Install
+## Install (MacOS & Linux)
 
-Tennis runs on macOS and Linux.
-
-**Option 1: with Go** (needs Go 1.25 or newer)
+**Option 1: Using Go** (needs Go 1.25 or newer)
 
 ```bash
 go install github.com/satoricorp/tennis/cmd/tennis@latest
@@ -30,8 +28,7 @@ go install github.com/satoricorp/tennis/cmd/tennis@latest
 
 This puts `tennis` in `$(go env GOPATH)/bin`. That folder must be on your `PATH`.
 
-
-**Option 2: build from source**
+**Option 2: Build from source**
 
 ```bash
 git clone https://github.com/satoricorp/tennis
@@ -45,7 +42,8 @@ NOTE: `CGO_ENABLED=0` makes one self-contained binary with no C libraries.
 tennis version
 ```
 
-The first time you index something, Tennis downloads it (about 123MB) into `~/.cache/tennis`. It also uses the network to summarize cards when `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` is set, and for every `add` and `search` in an `--openai` namespace.
+NOTE:
+The first time you index something, Tennis downloads its embedding model (about 123MB) into `~/.cache/tennis`. It also uses the network to summarize cards when `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` is set, and for every `add` and `search` in an `--openai` namespace. You can skip these features by not setting those variables.
 
 To read PDFs on Linux, also install `pdftotext` (for example `sudo apt install poppler-utils`). On a Mac, Tennis defaults to `pdftotext`, with the Spotlight importer as a fallback.
 
@@ -175,21 +173,21 @@ Chat history is stored one message per document, so a search finds the exact mes
 
 Every document has attributes you can filter with `--where`. Join comparisons with commas (all must match): `=`, `!=`, `>`, `>=`, `<`, `<=`. Quote a value that contains a comma: `--where 'path="/Users/you/Budget, 2026.md"'`.
 
-| Documents | Attributes |
-|---|---|
-| Files | `path`, `name`, `size`, `modified` |
-| Chat messages | `source`, `session`, `role`, `title`, `created` |
+| Documents             | Attributes                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------ |
+| Files                 | `path`, `name`, `size`, `modified`                                                         |
+| Chat messages         | `source`, `session`, `role`, `title`, `created`                                            |
 | Claude Code and Codex | also `project` (the repo the session started in), `cwd`, and `worktree` when there was one |
-| Claude Code | also `branch`; a subagent's turns have `subagent` |
+| Claude Code           | also `branch`; a subagent's turns have `subagent`                                          |
 
 Every file/chat gets its own markdown card. With `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` set, the card contains a short summary otherwise its the header of the document.
 
-| Setting | Default | Change with |
-|---|---|---|
-| Format | detected from the contents | `--chatgpt`, `--claude`, `--claude-code`, `--codex`, `--files` |
-| Database | `~/.tennis/db.sqlite` | `--db` or `$TENNIS_DB` |
-| Namespace | `context` | `--ns` or `$TENNIS_NS` |
-| Cards | `~/tennis` | `--cards <dir>` or `--no-cards` |
+| Setting   | Default                    | Change with                                                    |
+| --------- | -------------------------- | -------------------------------------------------------------- |
+| Format    | detected from the contents | `--chatgpt`, `--claude`, `--claude-code`, `--codex`, `--files` |
+| Database  | `~/.tennis/db.sqlite`      | `--db` or `$TENNIS_DB`                                         |
+| Namespace | `context`                  | `--ns` or `$TENNIS_NS`                                         |
+| Cards     | `~/tennis`                 | `--cards <dir>` or `--no-cards`                                |
 
 Run `tennis --help` for the main commands and `tennis --agents` for every command.
 
@@ -254,13 +252,13 @@ for _, r := range results {
 tennis serve                        # listens on 127.0.0.1:8817
 ```
 
-| Method | Path | Request body | Response |
-|---|---|---|---|
-| `GET` | `/health` | none | `{"status": "ok", "version": ..., "db": ...}` |
-| `GET` | `/v1/namespaces` | none | list of namespaces with counts, or `null` when there are none |
-| `POST` | `/v1/namespaces/{ns}/write` | `{"documents": [{"id", "text", "attributes"}]}` | `{"written", "skipped", "chunks"}` |
-| `POST` | `/v1/namespaces/{ns}/query` | `{"text", "top_k", "mode", "where"}` | `{"results": [...]}` |
-| `POST` | `/v1/namespaces/{ns}/delete` | `{"ids": [...]}` | `{"deleted": n}` |
+| Method | Path                         | Request body                                    | Response                                                      |
+| ------ | ---------------------------- | ----------------------------------------------- | ------------------------------------------------------------- |
+| `GET`  | `/health`                    | none                                            | `{"status": "ok", "version": ..., "db": ...}`                 |
+| `GET`  | `/v1/namespaces`             | none                                            | list of namespaces with counts, or `null` when there are none |
+| `POST` | `/v1/namespaces/{ns}/write`  | `{"documents": [{"id", "text", "attributes"}]}` | `{"written", "skipped", "chunks"}`                            |
+| `POST` | `/v1/namespaces/{ns}/query`  | `{"text", "top_k", "mode", "where"}`            | `{"results": [...]}`                                          |
+| `POST` | `/v1/namespaces/{ns}/delete` | `{"ids": [...]}`                                | `{"deleted": n}`                                              |
 
 Namespaces are created on the first write. `where` uses the same syntax as the CLI's `--where`.
 
@@ -278,19 +276,19 @@ echo '{"id": "e1", "text": "deploy failed with a connection timeout", "attribute
 
 ## Supported file types
 
-| What | Files | Read by | Where it works |
-|---|---|---|---|
-| Plain text | any file whose contents are text: `.md`, `.txt`, `.go`, `.json`, `.csv`, a `Makefile`, … | Tennis | everywhere |
-| Office | `.docx`, `.pptx`, `.xlsx` | Tennis | everywhere |
-| Web pages and e-books | `.html`, `.htm`, `.xhtml`, `.epub` | Tennis | everywhere |
-| PDF | `.pdf` | `pdftotext`, or Spotlight on a Mac | macOS; Linux with `pdftotext` installed |
-| Rich text and older Word | `.rtf`, `.rtfd`, `.doc`, `.odt`, `.webarchive` | macOS `textutil` | macOS |
-| Apple iWork, older Office, email | `.pages`, `.numbers`, `.key`, `.xls`, `.ppt`, `.ods`, `.odp`, `.eml`, `.emlx` | macOS Spotlight | macOS |
-| ChatGPT history | a data export, as a `.zip` or unzipped folder | Tennis | everywhere |
-| Claude.ai history | a data export, as a `.zip` or unzipped folder, including project files | Tennis | everywhere |
-| Claude Code history | `~/.claude`, including subagent transcripts | Tennis | everywhere |
-| Codex history | `~/.codex` | Tennis | everywhere |
-| Program output | newline-delimited JSON on stdin, with `add --ndjson` | Tennis | everywhere |
+| What                             | Files                                                                                    | Read by                            | Where it works                          |
+| -------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------- | --------------------------------------- |
+| Plain text                       | any file whose contents are text: `.md`, `.txt`, `.go`, `.json`, `.csv`, a `Makefile`, … | Tennis                             | everywhere                              |
+| Office                           | `.docx`, `.pptx`, `.xlsx`                                                                | Tennis                             | everywhere                              |
+| Web pages and e-books            | `.html`, `.htm`, `.xhtml`, `.epub`                                                       | Tennis                             | everywhere                              |
+| PDF                              | `.pdf`                                                                                   | `pdftotext`, or Spotlight on a Mac | macOS; Linux with `pdftotext` installed |
+| Rich text and older Word         | `.rtf`, `.rtfd`, `.doc`, `.odt`, `.webarchive`                                           | macOS `textutil`                   | macOS                                   |
+| Apple iWork, older Office, email | `.pages`, `.numbers`, `.key`, `.xls`, `.ppt`, `.ods`, `.odp`, `.eml`, `.emlx`            | macOS Spotlight                    | macOS                                   |
+| ChatGPT history                  | a data export, as a `.zip` or unzipped folder                                            | Tennis                             | everywhere                              |
+| Claude.ai history                | a data export, as a `.zip` or unzipped folder, including project files                   | Tennis                             | everywhere                              |
+| Claude Code history              | `~/.claude`, including subagent transcripts                                              | Tennis                             | everywhere                              |
+| Codex history                    | `~/.codex`                                                                               | Tennis                             | everywhere                              |
+| Program output                   | newline-delimited JSON on stdin, with `add --ndjson`                                     | Tennis                             | everywhere                              |
 
 When you add a folder, Tennis skips these:
 
@@ -306,12 +304,12 @@ An **embedding** is a list of numbers that represents what a piece of text means
 
 The default, [`potion-retrieval-32M`](https://huggingface.co/minishlab/potion-retrieval-32M) from Minish Lab, is a table of one 512-number vector per vocabulary token. Tennis splits the text into tokens, looks each one up, averages the vectors, and scales the result to length 1.
 
-| Model | Numbers per vector | Use it with |
-|---|---|---|
-| `potion-retrieval-32M` | 512 | the default |
-| `potion-base-8M` | 256 | `--model potion-base-8M` |
-| `text-embedding-3-small` | 1536 | `--openai text-embedding-3-small` |
-| `text-embedding-3-large` | 3072 | `--openai text-embedding-3-large` |
+| Model                    | Numbers per vector | Use it with                       |
+| ------------------------ | ------------------ | --------------------------------- |
+| `potion-retrieval-32M`   | 512                | the default                       |
+| `potion-base-8M`         | 256                | `--model potion-base-8M`          |
+| `text-embedding-3-small` | 1536               | `--openai text-embedding-3-small` |
+| `text-embedding-3-large` | 3072               | `--openai text-embedding-3-large` |
 
 On the MTEB retrieval benchmark, `potion-retrieval-32M` scores 35.06, against 42.92 for `all-MiniLM-L6-v2`. Keyword search covers much of that gap on exact names, IDs, and code. `potion-base-8M` is the same kind of model, smaller (29MB) and less accurate. The OpenAI models need `OPENAI_API_KEY` and send your text to OpenAI.
 
@@ -329,11 +327,11 @@ Keyword search uses [BM25](https://en.wikipedia.org/wiki/Okapi_BM25) through SQL
 
 Each search keeps a document's best-matching chunk and the top 100 documents. The merged score is reciprocal rank fusion: `1 / (60 + rank)` from each search that found the document, added together. Ranks are used because BM25 and cosine similarity are on different scales. First in both scores 2/61 ≈ 0.0328. First in one scores 1/61 ≈ 0.0164. The text shown is that best chunk, preferring the meaning-based one when both searches found the document.
 
-| Mode | What runs |
-|---|---|
-| `--mode hybrid` | both searches (the default) |
-| `--mode keyword` | BM25 only |
-| `--mode semantic` | the vector search only |
+| Mode              | What runs                   |
+| ----------------- | --------------------------- |
+| `--mode hybrid`   | both searches (the default) |
+| `--mode keyword`  | BM25 only                   |
+| `--mode semantic` | the vector search only      |
 
 `--where` runs before either search. The CLI shows 1 result (`-k` for more). The Go library returns 10 (`TopK`). `tennis search --where ...` with no query prints every match in full, oldest first.
 
@@ -362,17 +360,17 @@ You need Go 1.25 or newer, on macOS or Linux.
 
 File structure:
 
-| Path | What it is |
-|---|---|
-| `*.go` (repository root) | the Go library: storage, chunking, search, filters |
-| `embed/` | the embedding models: built-in and OpenAI |
-| `summarize/` | the model calls that write card summaries |
-| `cmd/tennis/` | the command-line tool: importers, file readers, cards, the HTTP server |
-| `examples/basic/` | the Go example above, compiled by CI so it stays correct |
-| `docs/` | the documentation site (Next.js): `cd docs && npm install && npm run dev` |
-| `www/` | the project website (Next.js) |
-| `infra/` | the download host for releases (AWS CDK) |
-| `scripts/` | the installer and CI helper scripts |
+| Path                     | What it is                                                                |
+| ------------------------ | ------------------------------------------------------------------------- |
+| `*.go` (repository root) | the Go library: storage, chunking, search, filters                        |
+| `embed/`                 | the embedding models: built-in and OpenAI                                 |
+| `summarize/`             | the model calls that write card summaries                                 |
+| `cmd/tennis/`            | the command-line tool: importers, file readers, cards, the HTTP server    |
+| `examples/basic/`        | the Go example above, compiled by CI so it stays correct                  |
+| `docs/`                  | the documentation site (Next.js): `cd docs && npm install && npm run dev` |
+| `www/`                   | the project website (Next.js)                                             |
+| `infra/`                 | the download host for releases (AWS CDK)                                  |
+| `scripts/`               | the installer and CI helper scripts                                       |
 
 Questions and bugs go in [an issue](https://github.com/satoricorp/tennis/issues).
 
