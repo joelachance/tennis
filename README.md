@@ -121,6 +121,46 @@ DATE             SOURCE         DOCS  TITLE
 3 files
 ```
 
+## What to use Tennis for
+
+### Working offline
+
+Tennis runs on your machine and never makes network calls.
+
+### Searching files and chat history locally
+
+It finds exact terms (names, IDs, error codes) and paraphrases in the same search.
+
+### Free, local knowledge base
+
+Write documents in and query them back through the Go library, a local HTTP API, or the CLI with `--json`.
+
+### Speed
+
+On an Apple M4, a search over about 117,000 chunks (74,000 chat messages) takes about 2 seconds.
+
+## What Tennis isn't as good at
+
+### Millions of documents
+
+Tennis is not optimized for massive document stores, and is ideal for individual power users.
+
+### A shared server
+
+Tennis doesn't have any authentication features, and should stay sandboxed on a single machine.
+
+### Chinese, Japanese, and Korean languages
+
+The keyword index can't split those languages into words, however, semantic search should work. Follow along here: [issue #1](https://github.com/satoricorp/tennis/issues/1).
+
+### Images, audio, and video
+
+Tennis indexes text only.
+
+### Windows
+
+Only macOS and Linux are supported.
+
 ## Full Example
 
 ```bash
@@ -183,24 +223,7 @@ Every file/chat gets its own markdown card. With `ANTHROPIC_API_KEY` or `OPENAI_
 
 Run `tennis --help` for the main commands and `tennis --agents` for every command.
 
-# Details
-
-## What to use Tennis for
-
-- **Working offline.** Tennis runs on your machine and never makes network calls.
-- **Searching files and chat history locally** It finds exact terms (names, IDs, error codes) and paraphrases in the same search.
-- **Free, local knowledge base.** Write documents in and query them back through the Go library, a local HTTP API, or the CLI with `--json`.
-- **Speed.** On an Apple M4, a search over about 117,000 chunks (74,000 chat messages) takes about 2 seconds.
-
-## What Tennis isn't as good at
-
-- **Millions of documents.** Tennis is not optimized for massive document stores, and is ideal for individual power users.
-- **A shared server.** Tennis doesn't have any authentication features, and should stay sandboxed on a single machine.
-- **Chinese, Japanese, and Korean languages.** The keyword index can't split those languages into words, however, semantic search should work. Follow along here: [issue #1](https://github.com/satoricorp/tennis/issues/1).
-- **Images, audio, and video.** Tennis indexes text only.
-- **Windows.** Only macOS and Linux are supported.
-
-## Embedding tennis with your application
+# Embedding tennis with your application
 
 There are three ways to use Tennis from your own code.
 
@@ -259,7 +282,7 @@ curl -s localhost:8817/v1/namespaces/notes/write -d '{"documents": [{"id": "a1",
 curl -s localhost:8817/v1/namespaces/notes/query -d '{"text": "keep me signed in", "top_k": 5}'
 ```
 
-## Supported file types
+# Supported file types
 
 | What                             | Files                                                                    |
 | -------------------------------- | ------------------------------------------------------------------------ |
@@ -273,16 +296,6 @@ curl -s localhost:8817/v1/namespaces/notes/query -d '{"text": "keep me signed in
 | Claude Code history              | `~/.claude`, including subagent transcripts                              |
 | Codex history                    | `~/.codex`                                                               |
 | Program output                   | newline-delimited JSON on stdin, with `add --ndjson`                     |
-
-The two legacy Apple rows need macOS. PDF needs `pdftotext` on Linux; on a Mac Tennis uses Spotlight as a fallback. Everything else works everywhere.
-
-When you add a folder, Tennis skips these:
-
-- **Silently:** images, audio, video, archives, fonts, databases, empty files, dotfiles, and anything inside a folder whose name starts with a dot (such as `.git`).
-- **Silently, counted in the summary:** `node_modules`, `vendor`, `target`, `dist`, `build`, `__pycache__`, `site-packages`, application bundles, symbolic links to folders, and anything a `.gitignore` inside the folder lists. The folder you name yourself is always read.
-- **With a note on stderr:** other binary files, text files over 10MB, documents over 100MB, and formats with no reader on your machine.
-
-Use `--ext .go,.md` to read only some extensions.
 
 # Contributing
 
