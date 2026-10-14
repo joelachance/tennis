@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -79,10 +80,62 @@ func cmdServe(args []string) error {
 	}
 }
 
+// nsCache holds one open *tennis.Namespace per name for the life of the
+// server. Opening a namespace rebuilds its embedder, and for the built-in model
+// that means reading the whole ~123MB weights file; paying that on every
+// request made each call cost a model load. One handle per namespace amortizes
+// it to once. The mutex also serializes first-time creates, so two concurrent
+// first writes to a new namespace no longer race on the insert.
+type nsCache struct {
+	db   *tennis.DB
+	mu   sync.Mutex
+	open map[string]*tennis.Namespace
+}
+
+func newNSCache(db *tennis.DB) *nsCache {
+	return &nsCache{db: db, open: map[string]*tennis.Namespace{}}
+}
+
+// get returns the cached handle, opening it on first use.
+func (c *nsCache) get(ctx context.Context, name string) (*tennis.Namespace, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if ns, ok := c.open[name]; ok {
+		return ns, nil
+	}
+	ns, err := c.db.Namespace(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	c.open[name] = ns
+	return ns, nil
+}
+
+// getOrCreate is get, creating the namespace with opts when it does not exist.
+// Only "not found" triggers a create; any other open failure (missing key,
+// model mismatch) is reported as itself.
+func (c *nsCache) getOrCreate(ctx context.Context, name string, opts tennis.NamespaceOptions) (*tennis.Namespace, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if ns, ok := c.open[name]; ok {
+		return ns, nil
+	}
+	ns, err := c.db.Namespace(ctx, name)
+	if errors.Is(err, tennis.ErrNamespaceNotFound) {
+		ns, err = c.db.CreateNamespace(ctx, name, opts)
+	}
+	if err != nil {
+		return nil, err
+	}
+	c.open[name] = ns
+	return ns, nil
+}
+
 // newServeMux builds the API. Separate from cmdServe so tests can drive it
 // through httptest without a real listener or signal handling.
 func newServeMux(db *tennis.DB) http.Handler {
 	mux := http.NewServeMux()
+	cache := newNSCache(db)
 	mux.HandleFunc("GET /v1/namespaces", func(w http.ResponseWriter, r *http.Request) {
 		infos, err := db.ListNamespaces(r.Context())
 		respond(w, infos, err)
@@ -97,15 +150,9 @@ func newServeMux(db *tennis.DB) http.Handler {
 			respondStatus(w, http.StatusBadRequest, err)
 			return
 		}
-		name := r.PathValue("ns")
-		ns, err := db.Namespace(r.Context(), name)
-		if errors.Is(err, tennis.ErrNamespaceNotFound) {
-			ns, err = db.CreateNamespace(r.Context(), name, tennis.NamespaceOptions{
-				Model: body.Model, OpenAIModel: body.OpenAI,
-			})
-		}
-		// Only "not found" triggers a create; any other open failure (missing
-		// key, model mismatch) must be reported as itself.
+		ns, err := cache.getOrCreate(r.Context(), r.PathValue("ns"), tennis.NamespaceOptions{
+			Model: body.Model, OpenAIModel: body.OpenAI,
+		})
 		if err != nil {
 			respond(w, nil, err)
 			return
@@ -124,7 +171,7 @@ func newServeMux(db *tennis.DB) http.Handler {
 			respondStatus(w, http.StatusBadRequest, err)
 			return
 		}
-		ns, err := db.Namespace(r.Context(), r.PathValue("ns"))
+		ns, err := cache.get(r.Context(), r.PathValue("ns"))
 		if err != nil {
 			respond(w, nil, err)
 			return
@@ -147,7 +194,7 @@ func newServeMux(db *tennis.DB) http.Handler {
 			respondStatus(w, http.StatusBadRequest, err)
 			return
 		}
-		ns, err := db.Namespace(r.Context(), r.PathValue("ns"))
+		ns, err := cache.get(r.Context(), r.PathValue("ns"))
 		if err != nil {
 			respond(w, nil, err)
 			return
