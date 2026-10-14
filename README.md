@@ -16,6 +16,8 @@
 
 Tennis is a fully local (offline) CLI that indexes and searches your context. Tennis works for most data types, as well as ChatGPT & Claude chats. Tennis embeds and stores everything in both SQLite and in markdown files called 'cards'.
 
+Every search runs a keyword search (BM25, through SQLite's FTS5) and a semantic search, then fuses both into one score. Tennis uses `potion-retrieval-32M`, a static table of vectors rather than a neural network. That pairing is what makes the setup work offline.
+
 # Getting Started
 
 ## Install (MacOS & Linux)
@@ -61,18 +63,16 @@ tennis: /Users/you/Documents/notes: reading plain files
 imported 3, skipped 0 unchanged, 3 chunks in "context", 3 cards in /Users/you/tennis
 ```
 
-Without `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`, that line is `no ANTHROPIC_API_KEY or OPENAI_API_KEY; cards will carry the opening message instead of a summary`.
-
 What happened:
 
-- Tennis created a **namespace** called `context`. A namespace is a separate collection of documents, and `context` is the default one.
+- Tennis created a **namespace** called `context`. A namespace is a collection of context, and `context` is the default one.
 - It read the 3 files, split them into chunks, and stored them in `~/.tennis/db.sqlite`.
 - It wrote one markdown summary **card** per file into `~/tennis`. These are human readable markdown files you can explore to understand what you've indexed without any tools.
 
 Run search:
 
 ```bash
-$ tennis search "keep me signed in"
+$ tennis search "do we set a session cookie"
 > # Session handling
 
   Make the login flow remember the user between sessions. The session cookie is
@@ -85,8 +85,8 @@ You get the best match, printed in full. The last line includes the file name, d
 
 Ask for more results with `-k`:
 
-```bash
-$ tennis search "keep me signed in" -k 3
+````bash
+$ tennis search "tell me about our auth flow" -k 2
  1. auth.md [2026-10-08] 0.0328  [kw#1 sem#1]
     # Session handling
 
@@ -99,14 +99,6 @@ $ tennis search "keep me signed in" -k 3
     Failed requests back off exponentially, doubling the delay each attempt up
     to a cap of thirty seconds.
 
- 3. config.md [2026-10-08] 0.0159  [sem#3]
-    # Configuration
-
-    Write a parser for TOML configuration files. Values from the file are merged
-    over the defaults.
-```
-
-Note the tag in these examples. `kw#1` denotes that keyword search ranked higher than semantic search, where `sem#2` means semantic search ranked it second.
 
 Running `add` multiple times is non-destructive. Tennis skips any files that 1. it already knows about and 2. haven't changed:
 
@@ -115,7 +107,7 @@ $ tennis add ~/Documents/notes
 tennis: summarizing cards with anthropic:claude-opus-5
 tennis: /Users/you/Documents/notes: reading plain files
 imported 0, skipped 3 unchanged, 0 chunks in "context"
-```
+````
 
 List what is stored:
 
@@ -167,9 +159,7 @@ tennis rm ~/work/handbook/old-policy.md --ns work
 tennis ns rm work
 ```
 
-Some notes on what these commands do.
-
-Chat history is stored one message per document, so a search finds the exact message. `tennis ls` groups messages back into one row per conversation.
+## Filters
 
 Every document has attributes you can filter with `--where`. Join comparisons with commas (all must match): `=`, `!=`, `>`, `>=`, `<`, `<=`. Quote a value that contains a comma: `--where 'path="/Users/you/Budget, 2026.md"'`.
 
@@ -179,6 +169,8 @@ Every document has attributes you can filter with `--where`. Join comparisons wi
 | Chat messages         | `source`, `session`, `role`, `title`, `created`                                            |
 | Claude Code and Codex | also `project` (the repo the session started in), `cwd`, and `worktree` when there was one |
 | Claude Code           | also `branch`; a subagent's turns have `subagent`                                          |
+
+## Cards
 
 Every file/chat gets its own markdown card. With `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` set, the card contains a short summary otherwise its the header of the document.
 
@@ -193,14 +185,14 @@ Run `tennis --help` for the main commands and `tennis --agents` for every comman
 
 # Details
 
-## What tennis is great for
+## What to use Tennis for
 
 - **Working offline.** Tennis runs on your machine and never makes network calls.
 - **Searching files and chat history locally** It finds exact terms (names, IDs, error codes) and paraphrases in the same search.
 - **Free, local knowledge base.** Write documents in and query them back through the Go library, a local HTTP API, or the CLI with `--json`.
 - **Speed.** On an Apple M4, a search over about 117,000 chunks (74,000 chat messages) takes about 2 seconds.
 
-## What tennis is not great for
+## What Tennis isn't as good at
 
 - **Millions of documents.** Tennis is not optimized for massive document stores, and is ideal for individual power users.
 - **A shared server.** Tennis doesn't have any authentication features, and should stay sandboxed on a single machine.
@@ -267,28 +259,22 @@ curl -s localhost:8817/v1/namespaces/notes/write -d '{"documents": [{"id": "a1",
 curl -s localhost:8817/v1/namespaces/notes/query -d '{"text": "keep me signed in", "top_k": 5}'
 ```
 
-**3. The CLI from scripts.** Add `--json` to `search`, `ls`, `add`, or `rm` for machine-readable output on stdout. `ns list` and `ns rm` honor it too. `ns create` prints plain text. To add documents that aren't files, pipe newline-delimited JSON into `add --ndjson`, one document per line:
-
-```bash
-echo '{"id": "e1", "text": "deploy failed with a connection timeout", "attributes": {"kind": "event"}}' \
-  | tennis add --ndjson --ns agents
-```
-
 ## Supported file types
 
-| What                             | Files                                                                                    | Read by                            | Where it works                          |
-| -------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------- | --------------------------------------- |
-| Plain text                       | any file whose contents are text: `.md`, `.txt`, `.go`, `.json`, `.csv`, a `Makefile`, … | Tennis                             | everywhere                              |
-| Office                           | `.docx`, `.pptx`, `.xlsx`                                                                | Tennis                             | everywhere                              |
-| Web pages and e-books            | `.html`, `.htm`, `.xhtml`, `.epub`                                                       | Tennis                             | everywhere                              |
-| PDF                              | `.pdf`                                                                                   | `pdftotext`, or Spotlight on a Mac | macOS; Linux with `pdftotext` installed |
-| Rich text and older Word         | `.rtf`, `.rtfd`, `.doc`, `.odt`, `.webarchive`                                           | macOS `textutil`                   | macOS                                   |
-| Apple iWork, older Office, email | `.pages`, `.numbers`, `.key`, `.xls`, `.ppt`, `.ods`, `.odp`, `.eml`, `.emlx`            | macOS Spotlight                    | macOS                                   |
-| ChatGPT history                  | a data export, as a `.zip` or unzipped folder                                            | Tennis                             | everywhere                              |
-| Claude.ai history                | a data export, as a `.zip` or unzipped folder, including project files                   | Tennis                             | everywhere                              |
-| Claude Code history              | `~/.claude`, including subagent transcripts                                              | Tennis                             | everywhere                              |
-| Codex history                    | `~/.codex`                                                                               | Tennis                             | everywhere                              |
-| Program output                   | newline-delimited JSON on stdin, with `add --ndjson`                                     | Tennis                             | everywhere                              |
+| What                             | Files                                                                    |
+| -------------------------------- | ------------------------------------------------------------------------ |
+| Plain text                       | any file whose contents are text: `.md`, `.txt`, `.go`, `.json`, a `Makefile`, … |
+| Office                           | `.docx`, `.pptx`, `.xlsx`                                                |
+| Web pages and e-books            | `.html`, `.htm`, `.xhtml`, `.epub`                                       |
+| PDF                              | `.pdf`                                                                   |
+| Rich text and older Word         | `.rtf`, `.rtfd`, `.doc`, `.odt`, `.webarchive`                           |
+| Apple iWork, older Office, email | `.pages`, `.numbers`, `.key`, `.xls`, `.ppt`, `.ods`, `.odp`, `.eml`, `.emlx` |
+| ChatGPT and Claude.ai history    | a data export, as a `.zip` or unzipped folder, including project files   |
+| Claude Code history              | `~/.claude`, including subagent transcripts                              |
+| Codex history                    | `~/.codex`                                                               |
+| Program output                   | newline-delimited JSON on stdin, with `add --ndjson`                     |
+
+The two legacy Apple rows need macOS. PDF needs `pdftotext` on Linux; on a Mac Tennis uses Spotlight as a fallback. Everything else works everywhere.
 
 When you add a folder, Tennis skips these:
 
@@ -297,43 +283,6 @@ When you add a folder, Tennis skips these:
 - **With a note on stderr:** other binary files, text files over 10MB, documents over 100MB, and formats with no reader on your machine.
 
 Use `--ext .go,.md` to read only some extensions.
-
-## Specifics about the Tennis vector architecture
-
-An **embedding** is a list of numbers that represents what a piece of text means. Texts with similar meanings get similar lists. Tennis stores one embedding per chunk of text and compares them with the embedding of your query.
-
-The default, [`potion-retrieval-32M`](https://huggingface.co/minishlab/potion-retrieval-32M) from Minish Lab, is a table of one 512-number vector per vocabulary token. Tennis splits the text into tokens, looks each one up, averages the vectors, and scales the result to length 1.
-
-| Model                    | Numbers per vector | Use it with                       |
-| ------------------------ | ------------------ | --------------------------------- |
-| `potion-retrieval-32M`   | 512                | the default                       |
-| `potion-base-8M`         | 256                | `--model potion-base-8M`          |
-| `text-embedding-3-small` | 1536               | `--openai text-embedding-3-small` |
-| `text-embedding-3-large` | 3072               | `--openai text-embedding-3-large` |
-
-On the MTEB retrieval benchmark, `potion-retrieval-32M` scores 35.06, against 42.92 for `all-MiniLM-L6-v2`. Keyword search covers much of that gap on exact names, IDs, and code. `potion-base-8M` is the same kind of model, smaller (29MB) and less accurate. The OpenAI models need `OPENAI_API_KEY` and send your text to OpenAI.
-
-The built-in model downloads once from Hugging Face into `~/.cache/tennis/models/`. Tennis checks the file against the SHA-256 checksum in [`embed/models.go`](embed/models.go) and refuses any non-matching files. A namespace requires the model it was created with, and opening it with another model throws an error (i.e. the vectors can't be compared). To switch, create a new namespace and add the files again.
-
-Each document is split into chunks of about 1,000 characters that overlap by 100. Tennis attempts to find boundaries on paragraphs or sentences when possible. Documents, attributes, and chunks live in one SQLite file, `~/.tennis/db.sqlite`, with each vector stored as 32-bit floats.
-
-A search compares the query with every chunk that passes the filters. Time grows with the number of chunks.
-
-## Specifics about tennis search
-
-Every search runs a keyword search and a semantic search, then merges both.
-
-Keyword search uses [BM25](https://en.wikipedia.org/wiki/Okapi_BM25) through SQLite's FTS5 index. Words are stemmed, so "running" matches "run", and the query's words are joined with OR. Common words such as "the" are dropped, and search operators in the query are plain text. Meaning-based search compares the query's vector with every chunk's vector.
-
-Each search keeps a document's best-matching chunk and the top 100 documents. The merged score is reciprocal rank fusion: `1 / (60 + rank)` from each search that found the document, added together. Ranks are used because BM25 and cosine similarity are on different scales. First in both scores 2/61 ≈ 0.0328. First in one scores 1/61 ≈ 0.0164. The text shown is that best chunk, preferring the meaning-based one when both searches found the document.
-
-| Mode              | What runs                   |
-| ----------------- | --------------------------- |
-| `--mode hybrid`   | both searches (the default) |
-| `--mode keyword`  | BM25 only                   |
-| `--mode semantic` | the vector search only      |
-
-`--where` runs before either search. The CLI shows 1 result (`-k` for more). The Go library returns 10 (`TopK`). `tennis search --where ...` with no query prints every match in full, oldest first.
 
 # Contributing
 
@@ -355,22 +304,6 @@ You need Go 1.25 or newer, on macOS or Linux.
    go test ./...
    CGO_ENABLED=0 go build -o tennis ./cmd/tennis
    ```
-
-3. Write good commits. If you're using Claude, please read and review your code, and make sure your commit message reflects what's changed and why.
-
-File structure:
-
-| Path                     | What it is                                                                |
-| ------------------------ | ------------------------------------------------------------------------- |
-| `*.go` (repository root) | the Go library: storage, chunking, search, filters                        |
-| `embed/`                 | the embedding models: built-in and OpenAI                                 |
-| `summarize/`             | the model calls that write card summaries                                 |
-| `cmd/tennis/`            | the command-line tool: importers, file readers, cards, the HTTP server    |
-| `examples/basic/`        | the Go example above, compiled by CI so it stays correct                  |
-| `docs/`                  | the documentation site (Next.js): `cd docs && npm install && npm run dev` |
-| `www/`                   | the project website (Next.js)                                             |
-| `infra/`                 | the download host for releases (AWS CDK)                                  |
-| `scripts/`               | the installer and CI helper scripts                                       |
 
 Questions and bugs go in [an issue](https://github.com/satoricorp/tennis/issues).
 
