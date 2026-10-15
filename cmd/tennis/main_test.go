@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"path/filepath"
 	"reflect"
@@ -655,6 +657,136 @@ func TestSearchFlagChecks(t *testing.T) {
 		case c.want != "" && (err == nil || !strings.Contains(err.Error(), c.want)):
 			t.Errorf("%s: got %v, want an error saying %q", c.name, err, c.want)
 		}
+	}
+}
+
+// TestNSHelpAdvertisesItsSubcommands pins the reason nsUsage exists. `ns rm` is
+// the only command that destroys what a person put in, and it is reached
+// through a positional subcommand, which a bare flag listing never mentions —
+// so `tennis ns -h` used to say nothing at all about it.
+func TestNSHelpAdvertisesItsSubcommands(t *testing.T) {
+	var b bytes.Buffer
+	fs_ := flag.NewFlagSet("ns", flag.ExitOnError)
+	fs_.SetOutput(&b)
+	nsUsage(fs_)
+
+	for _, sub := range nsSubcommands {
+		if !strings.Contains(b.String(), sub) {
+			t.Errorf("tennis ns help does not mention the %q subcommand:\n%s", sub, b.String())
+		}
+	}
+	// The top-level help and the ns help have to agree. They are separate
+	// literals, so nothing stops them drifting without this.
+	if !strings.Contains(helpText(false), strings.Join(nsSubcommands, "|")) {
+		t.Errorf("top-level help no longer lists ns <%s>", strings.Join(nsSubcommands, "|"))
+	}
+}
+
+// TestNSRemoveDropsTheNamespace covers the command end to end: ns rm takes a
+// name, drops the namespace, and says so. It also pins that rm is reached as
+// `ns rm <name>` and not as `rm --ns <name>` — those are different commands,
+// and conflating them is how a person ends up deleting documents when they
+// meant to delete a namespace.
+func TestNSRemoveDropsTheNamespace(t *testing.T) {
+	dbPath := readTestDB(t, readFixture()...)
+
+	out, err := captureStdout(t, func() error {
+		return cmdNS([]string{"create", "scratch", "--db", dbPath})
+	})
+	if err != nil {
+		t.Fatalf("ns create: %v\noutput: %s", err, out)
+	}
+
+	if _, err := captureStdout(t, func() error {
+		return cmdNS([]string{"rm", "scratch", "--db", dbPath})
+	}); err != nil {
+		t.Fatalf("ns rm: %v", err)
+	}
+
+	out, err = captureStdout(t, func() error { return cmdNS([]string{"--db", dbPath}) })
+	if err != nil {
+		t.Fatalf("ns list: %v", err)
+	}
+	if strings.Contains(out, "scratch") {
+		t.Errorf("ns list still shows the removed namespace:\n%s", out)
+	}
+
+	// The default namespace and its documents are untouched.
+	if !strings.Contains(out, defaultNamespace) {
+		t.Errorf("ns list dropped %q too:\n%s", defaultNamespace, out)
+	}
+
+	// A name that is not there is an error, not a silent success.
+	if _, err := captureStdout(t, func() error {
+		return cmdNS([]string{"rm", "scratch", "--db", dbPath})
+	}); err == nil || !errors.Is(err, tennis.ErrNamespaceNotFound) {
+		t.Errorf("removing an absent namespace: got %v, want ErrNamespaceNotFound", err)
+	}
+}
+
+// TestRMDropsNamespaceWithNoIDs covers the second spelling of namespace
+// removal: `tennis rm --ns work`, no ids. It is the one branch where rm stops
+// being a document command, so each half is pinned — the alias drops a whole
+// namespace, but only when --ns is typed, and only when no ids come with it.
+func TestRMDropsNamespaceWithNoIDs(t *testing.T) {
+	dbPath := readTestDB(t, readFixture()...)
+
+	if _, err := captureStdout(t, func() error {
+		return cmdNS([]string{"create", "scratch", "--db", dbPath})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// With ids, --ns only selects where to delete from.
+	out, err := captureStdout(t, func() error {
+		return cmdRm([]string{"auth.md", "--ns", "scratch", "--db", dbPath})
+	})
+	if err != nil {
+		t.Fatalf("rm <id> --ns: %v\noutput: %s", err, out)
+	}
+	out, err = captureStdout(t, func() error { return cmdNS([]string{"--db", dbPath}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "scratch") {
+		t.Errorf("rm <id> --ns scratch removed the namespace itself:\n%s", out)
+	}
+
+	// With none, the same flag removes it.
+	if _, err := captureStdout(t, func() error {
+		return cmdRm([]string{"--ns", "scratch", "--db", dbPath})
+	}); err != nil {
+		t.Fatalf("rm --ns with no ids: %v", err)
+	}
+	out, err = captureStdout(t, func() error { return cmdNS([]string{"--db", dbPath}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "scratch") {
+		t.Errorf("rm --ns scratch did not remove the namespace:\n%s", out)
+	}
+}
+
+// TestRMWithoutIDsNeverDropsANamespace is the safety half of the branch above.
+// An unflagged `tennis rm` resolves the namespace from $TENNIS_NS, and if that
+// counted as a request to remove one, a bare Enter against an exported
+// TENNIS_NS would destroy a namespace nobody named.
+func TestRMWithoutIDsNeverDropsANamespace(t *testing.T) {
+	dbPath := readTestDB(t, readFixture()...)
+
+	t.Setenv("TENNIS_NS", defaultNamespace)
+	if _, err := captureStdout(t, func() error {
+		return cmdRm([]string{"--db", dbPath})
+	}); err == nil {
+		t.Fatal("bare `tennis rm` under $TENNIS_NS removed a namespace")
+	}
+
+	out, err := captureStdout(t, func() error { return cmdNS([]string{"--db", dbPath}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, defaultNamespace) {
+		t.Errorf("default namespace is gone after a bare `tennis rm`:\n%s", out)
 	}
 }
 

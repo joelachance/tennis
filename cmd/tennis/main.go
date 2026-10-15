@@ -43,7 +43,7 @@ COMMANDS
   add <path...>                index sessions or files
   search <query>               search
   ls [source]                  list what tennis has, newest first
-  rm <id...>                   delete documents
+  rm <id...>                   delete documents, or a whole namespace with --ns
   ns [list|create|rm]          manage namespaces
   version
 `
@@ -1048,9 +1048,51 @@ func oneLine(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
+// dropNamespace removes a namespace and every document written to it. The
+// count is looked up first so the warning can name what is at stake while it
+// is still at stake — said afterwards it is a receipt, not a warning.
+//
+// Shared by `tennis ns rm <name>` and `tennis rm --ns <name>` so both
+// spellings warn identically.
+func dropNamespace(ctx context.Context, db *tennis.DB, name string, asJSON bool) error {
+	infos, err := db.ListNamespaces(ctx)
+	if err != nil {
+		return err
+	}
+	var info tennis.NamespaceInfo
+	found := false
+	for _, i := range infos {
+		if i.Name == name {
+			info, found = i, true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("namespace %q: %w", name, tennis.ErrNamespaceNotFound)
+	}
+	if !asJSON {
+		fmt.Fprintf(os.Stderr, "tennis: removing %q takes its %s (%s) with it\n",
+			name, plural(info.Documents, "document"), plural(info.Chunks, "chunk"))
+	}
+	if err := db.DropNamespace(ctx, name); err != nil {
+		return err
+	}
+	if asJSON {
+		return emit(map[string]any{
+			"removed": name, "documents": info.Documents, "chunks": info.Chunks,
+		})
+	}
+	fmt.Printf("removed %q\n", name)
+	return nil
+}
+
 // cmdRm deletes documents. The namespace is a flag here, matching add and
-// search, because rm is a document command — `tennis ns rm` is the one that
-// removes a namespace.
+// search, because rm is a document command.
+//
+// `tennis rm --ns <name>` with no ids is the one exception: it removes the
+// namespace itself, which is the same request as `tennis ns rm <name>`. That
+// spelling is honoured only when --ns is named on the command line, which is
+// what keeps $TENNIS_NS from being a loaded namespace-delete button.
 func cmdRm(args []string) error {
 	fs_ := flag.NewFlagSet("rm", flag.ExitOnError)
 	dbPath := fs_.String("db", defaultDB(), "database file")
@@ -1060,15 +1102,33 @@ func cmdRm(args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(pos) < 1 {
-		return fmt.Errorf("usage: tennis rm <id...> [--ns name]")
-	}
+
+	// No ids and a --ns is the same request as `tennis ns rm`, and people reach
+	// for it because rm is the verb they know. It is honoured only when --ns
+	// was typed. An unflagged bare `tennis rm` resolves the namespace from
+	// $TENNIS_NS, and a stray Enter against an exported TENNIS_NS must never be
+	// able to drop a namespace by accident.
+	nsNamed := false
+	fs_.Visit(func(f *flag.Flag) {
+		if f.Name == "ns" {
+			nsNamed = true
+		}
+	})
+
 	db, err := open(*dbPath, true)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 	ctx := context.Background()
+
+	if len(pos) < 1 {
+		if nsNamed {
+			return dropNamespace(ctx, db, *nsName, *asJSON)
+		}
+		return fmt.Errorf("usage: tennis rm <id...> [--ns name]\n\n" +
+			"to remove a namespace instead: tennis rm --ns <name>")
+	}
 
 	// rm used to take the namespace positionally. Left alone, the old spelling
 	// still runs — against the wrong namespace, deleting a document named
@@ -1097,8 +1157,28 @@ func cmdRm(args []string) error {
 	return nil
 }
 
+// nsSubcommands is the whole of the ns surface. The usage below, the
+// unknown-subcommand error, and the top-level help all read from it, so a
+// subcommand cannot be added in one place and left out of the others — which
+// is how `ns rm`, the only command that destroys a person's data, came to
+// exist with nothing in `tennis ns -h` pointing at it.
+var nsSubcommands = []string{"list", "create", "rm"}
+
+// nsUsage prints the ns help. A named function rather than a closure inside
+// cmdNS so the test can pin it without standing up a flagset with every flag.
+func nsUsage(fs_ *flag.FlagSet) {
+	out := fs_.Output()
+	fmt.Fprintf(out, "usage: tennis ns <%s> [flags]\n\n", strings.Join(nsSubcommands, "|"))
+	fmt.Fprint(out, "  list                       show every namespace (default)\n")
+	fmt.Fprint(out, "  create <name>              create one, bound to an embedder\n")
+	fmt.Fprint(out, "  rm <name>                  drop one, taking its documents with it\n\n")
+	fmt.Fprint(out, "Flags:\n")
+	fs_.PrintDefaults()
+}
+
 func cmdNS(args []string) error {
 	fs_ := flag.NewFlagSet("ns", flag.ExitOnError)
+	fs_.Usage = func() { nsUsage(fs_) }
 	dbPath := fs_.String("db", defaultDB(), "database file")
 	asJSON := fs_.Bool("json", false, "machine-readable output")
 	model := fs_.String("model", "", "built-in model (default "+embed.DefaultModel+")")
@@ -1153,45 +1233,9 @@ func cmdNS(args []string) error {
 		if len(pos) < 2 {
 			return fmt.Errorf("usage: tennis ns rm <name>")
 		}
-		name := pos[1]
-
-		// A namespace is not an empty container being tidied away: it holds
-		// every document ever written to it, and dropping it takes all of them.
-		// The count is looked up first so the warning can name what is at
-		// stake while it is still at stake — said afterwards it is a receipt,
-		// not a warning.
-		infos, err := db.ListNamespaces(ctx)
-		if err != nil {
-			return err
-		}
-		var info tennis.NamespaceInfo
-		found := false
-		for _, i := range infos {
-			if i.Name == name {
-				info, found = i, true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("namespace %q: %w", name, tennis.ErrNamespaceNotFound)
-		}
-		if !*asJSON {
-			fmt.Fprintf(os.Stderr, "tennis: removing %q takes its %s (%s) with it\n",
-				name, plural(info.Documents, "document"), plural(info.Chunks, "chunk"))
-		}
-		if err := db.DropNamespace(ctx, name); err != nil {
-			return err
-		}
-		if *asJSON {
-			return emit(map[string]any{
-				"removed": name, "documents": info.Documents, "chunks": info.Chunks,
-			})
-		}
-		fmt.Printf("removed %q\n", name)
-		return nil
-
+		return dropNamespace(ctx, db, pos[1], *asJSON)
 	}
-	return fmt.Errorf("unknown subcommand %q (want list, create, rm)", sub)
+	return fmt.Errorf("unknown subcommand %q (want %s)", sub, strings.Join(nsSubcommands, ", "))
 }
 
 // parseWhere turns "status=merged,cost>5" into a filter. Deliberately tiny:
