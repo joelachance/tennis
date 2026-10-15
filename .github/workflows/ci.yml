@@ -107,6 +107,7 @@ jobs:
       - run: shellcheck -s sh scripts/install.sh
       - run: shellcheck -s bash scripts/render-manifest.sh
       - run: shellcheck -s sh scripts/fetch-test-model.sh scripts/render-test-badge.sh
+      - run: shellcheck -s sh scripts/build-site.sh
 
       # Stand up the exact key layout the release workflow publishes, serve it
       # over HTTP, and install from it the way a user would.

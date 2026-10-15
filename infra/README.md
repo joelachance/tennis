@@ -65,17 +65,39 @@ permission `Account` → `R2 Storage` → `Edit`, scoped to the `tennis-releases
 bucket rather than the whole account. That token and the account ID are the
 only two credentials CI holds.
 
-### 4. Pages, for use.tennis
+### 4. Pages, for the site
 
-Create a Pages project named `tennis`. `pages.yml` deploys it, so nothing here
-needs a build command or output directory configured — set the production
-branch to `main` and attach the `use.tennis` custom domain under Pages →
-Custom domains.
+Connect the repository to a Pages project named `tennis`. Cloudflare builds it,
+so there is no deploy step in CI and no API token in the repository — the
+GitHub App holds that credential, which is why this path was chosen over
+deploying a prebuilt directory with wrangler.
+
+The project must exist before the first push, since the build cannot create
+it. Create it from the dashboard (Workers & Pages → Create application → Get
+started → Connect to Git), or locally with `npx wrangler pages project create
+tennis`.
+
+Build settings, all four of which matter:
+
+| Setting                 | Value                     |
+| ----------------------- | ------------------------- |
+| Framework preset        | None                      |
+| Build command           | `bash scripts/build-site.sh` |
+| Build output directory  | `www/out`                 |
+| Node version            | `22`                      |
+
+Leave the root directory empty. The build command does both apps and the
+merge; it is a script rather than a shell one-liner so the same thing runs on
+a laptop, which is the only reason to be able to trust it.
 
 The site was a GitHub project page before, so its Next apps carried a
 `/tennis` basePath that a real domain does not need. That prefix is gone from
 `www/next.config.ts`, `docs/next.config.mjs`, and the two places that hardcoded
 `/tennis/docs`.
+
+Until `use.tennis` is registered the site is live at `tennis.pages.dev`. Attaching
+the domain later is dashboard work: Pages → Custom domains → `use.tennis`. No code
+change and no rebuild — the project is already serving from the root.
 
 ## What ends up on download.use.tennis
 
@@ -103,6 +125,9 @@ Nothing in the install path depends on it.
 
 ## Repository wiring
 
+These are for the R2 publish in the release workflow only. The site deploys
+through the Pages GitHub App and needs nothing here.
+
 ```bash
 gh variable set TENNIS_DOWNLOAD_HOST   --body download.use.tennis
 gh variable set TENNIS_DOWNLOAD_BUCKET --body tennis-releases
@@ -116,6 +141,24 @@ fallback is also what the installer uses before the first R2 publish:
 `scripts/install.sh` carries a `TENNIS_DOWNLOAD_HOST` placeholder that the
 release workflow substitutes on upload, and an unsubstituted copy falls back to
 reading the archive straight from the GitHub release.
+
+### Before the domain exists
+
+The documented install works with no infrastructure at all, straight off the
+GitHub release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/satoricorp/tennis/main/scripts/install.sh | sh
+```
+
+To test the R2 path before `use.tennis` is registered, enable the bucket's
+Public Development URL (R2 → bucket → Settings) and point
+`TENNIS_DOWNLOAD_HOST` at the `https://pub-….r2.dev` host. The layout and the
+installer are identical; only the hostname differs.
+
+Do not put an `r2.dev` URL in anything public. Cloudflare rate-limits that
+endpoint to hundreds of requests per second and excludes it from the cache —
+it is for testing, and a release post is not the place to find out.
 
 ## Publishing a release
 
