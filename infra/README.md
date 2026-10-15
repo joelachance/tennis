@@ -1,18 +1,89 @@
-# tennis download host
+# tennis on Cloudflare
 
-The CDK app behind `curl -fsSL https://<host>/install.sh | sh`.
+Two Cloudflare properties, each doing one job:
 
-It creates a private S3 bucket of release archives, a CloudFront distribution
-in front of it, an ACM certificate, the DNS records, and the IAM role GitHub
-Actions assumes to publish. The marketing site and docs are untouched — they
-stay on GitHub Pages.
+| Host                    | Product        | Serves                                     |
+| ----------------------- | -------------- | ------------------------------------------ |
+| `use.tennis`            | Cloudflare Pages | the marketing site, and the docs at `/docs` |
+| `download.use.tennis`   | R2               | `/install.sh` and the release archives      |
 
-## What ends up on the host
+Nothing here is deployed by this repo. The Pages deploy and the R2 publish are
+both driven from `.github/workflows/`, so this directory is just the one-time
+account setup and the map of what lives where.
+
+This replaced an AWS CloudFront + S3 stack that used to live here as a CDK app.
+The layout it published is unchanged, so the installer did not have to change;
+only the host moved.
+
+## One-time setup
+
+### 1. The zone
+
+Add `tennis` as a Cloudflare zone and point the registrar's nameservers at
+Cloudflare. Wait for delegation before going further — a certificate or
+custom-domain connection against a zone the internet cannot see yet fails:
+
+```bash
+dig +short NS tennis
+```
+
+### 2. R2, and the bucket behind download.use.tennis
+
+R2 asks for a payment method on first use, even inside the free tier. Without
+one the service stops rather than degrades when the allowance runs out, so set
+a billing alert. At this project's volumes (four ~5MB archives per release) the
+10 GB free allowance is not a near-term concern, and egress is free regardless
+of how much a release gets downloaded.
+
+```bash
+npx wrangler login
+npx wrangler r2 bucket create tennis-releases
+```
+
+Then connect the custom domain. The zone ID is on the zone's Overview page:
+
+```bash
+npx wrangler r2 bucket domain add tennis-releases \
+  --domain download.use.tennis --zone-id <ZONE_ID>
+```
+
+Equally: R2 → bucket → Settings → Public access → Custom Domains → Connect
+Domain. Cloudflare writes the CNAME itself.
+
+Use a custom domain rather than the `r2.dev` URL. `r2.dev` is rate-limited and
+explicitly not for production use, and it is the only endpoint that does not sit
+behind Cloudflare's cache.
+
+A custom domain makes every object in the bucket public to anyone holding the
+URL. That is correct here — release binaries are public — but it is a real
+property of the bucket, not something the deploy configures.
+
+### 3. The API token the release workflow uses
+
+My Profile → API Tokens → Create Account API Token → **R2 Storage Token**,
+permission `Account` → `R2 Storage` → `Edit`, scoped to the `tennis-releases`
+bucket rather than the whole account. That token and the account ID are the
+only two credentials CI holds.
+
+### 4. Pages, for use.tennis
+
+Create a Pages project named `tennis`. `pages.yml` deploys it, so nothing here
+needs a build command or output directory configured — set the production
+branch to `main` and attach the `use.tennis` custom domain under Pages →
+Custom domains.
+
+The site was a GitHub project page before, so its Next apps carried a
+`/tennis` basePath that a real domain does not need. That prefix is gone from
+`www/next.config.ts`, `docs/next.config.mjs`, and the two places that hardcoded
+`/tennis/docs`.
+
+## What ends up on download.use.tennis
 
 ```text
 /install.sh                                 the installer            5 min
 /VERSION                                    "0.1.0"                  5 min
 /manifest.json                              version + per-platform   5 min
+/404.txt                                    not-found body           5 min
 /latest/tennis_<os>_<arch>.tar.gz           unversioned alias        5 min
 /latest/tennis_<os>_<arch>.tar.gz.sha256                             5 min
 /v0.1.0/tennis_0.1.0_<os>_<arch>.tar.gz     the real payload         1 year, immutable
@@ -21,97 +92,62 @@ stay on GitHub Pages.
 
 `install.sh` reads `/VERSION`, then downloads the versioned archive and checks
 it against that release's `checksums.txt`. The payload is therefore always an
-immutable key: it caches at the edge forever and never needs invalidating. Only
-the small pointer files are short-lived, and those are the only paths the
-release workflow invalidates.
+immutable key. R2 stores `Cache-Control` on the object itself and Cloudflare's
+edge honours it, so those two rows need no invalidation — which is the one
+piece of machinery the CloudFront version needed and this one does not. Only
+the small pointer files are short-lived, and a new release becomes visible as
+soon as their TTL lapses.
 
-`/latest/` exists for Dockerfiles that would rather not do the lookup. Nothing
-in the install path depends on it.
+`/latest/` exists for Dockerfiles that would rather not do the version lookup.
+Nothing in the install path depends on it.
 
-## One-time setup
-
-CDK is already bootstrapped in this account for `us-east-1`, and everything
-here must live in `us-east-1` — CloudFront reads ACM certificates only from
-there.
-
-**1. Register the domain and give it a Route 53 hosted zone.**
-
-Registering through Route 53 creates the zone for you. Registering elsewhere
-means creating the zone and then setting the registrar's nameservers to the
-four the zone hands back:
+## Repository wiring
 
 ```bash
-aws route53 create-hosted-zone --name example.sh --caller-reference "$(date +%s)" \
-  --query 'DelegationSet.NameServers' --output text
+gh variable set TENNIS_DOWNLOAD_HOST   --body download.use.tennis
+gh variable set TENNIS_DOWNLOAD_BUCKET --body tennis-releases
+gh secret   set CLOUDFLARE_ACCOUNT_ID  --body <account id>
+gh secret   set CLOUDFLARE_API_TOKEN   --body <r2 token>
 ```
 
-Wait for the delegation to take effect before deploying — certificate
-validation fails against a zone the internet cannot see yet:
+Until all four are set the release workflow skips the publish step and cuts a
+GitHub release only, so a tag never fails on missing infrastructure. That
+fallback is also what the installer uses before the first R2 publish:
+`scripts/install.sh` carries a `TENNIS_DOWNLOAD_HOST` placeholder that the
+release workflow substitutes on upload, and an unsubstituted copy falls back to
+reading the archive straight from the GitHub release.
+
+## Publishing a release
 
 ```bash
-dig +short NS example.sh
+git tag v0.3.0 && git push origin v0.3.0
 ```
 
-**2. Deploy.**
+The workflow tests, runs goreleaser, uploads to R2, then re-downloads `/VERSION`
+and `/install.sh` from the edge to confirm the release is actually reachable
+before it goes green.
 
-`recordName` is the subdomain; pass `-c recordName=` (empty) to put the host on
-the apex instead.
+## Pointing the docs at the new host
+
+The checked-in docs quote the raw.githubusercontent URL for `install.sh`, which
+works before the bucket exists. Once `download.use.tennis/VERSION` resolves,
+switch `README.md`, `docs/content/docs/getting-started.mdx`,
+`www/components/Hero.tsx`, and `www/PLAN.md` to:
 
 ```bash
-cd infra && npm install
-AWS_REGION=us-east-1 npx cdk deploy tennis-downloads -c domainName=example.sh -c recordName=get
+curl -fsSL https://download.use.tennis/install.sh | sh
 ```
 
-The certificate is DNS-validated against the zone in the same stack, so the
-first deploy pauses a few minutes while ACM confirms it.
+and re-run `npm run sync-llms` in `docs/` to regenerate `llms-full.txt`.
 
-The stack creates the GitHub OIDC provider, which is account-global — there can
-only be one. If another stack already owns it, pass it instead of creating a
-second:
-
-```bash
-... -c githubOidcProviderArn=arn:aws:iam::<account>:oidc-provider/token.actions.githubusercontent.com
-```
-
-**3. Wire up the repo** with the three outputs the deploy prints.
-
-```bash
-gh variable set TENNIS_DOWNLOAD_HOST          --body get.example.sh
-gh variable set TENNIS_DOWNLOAD_BUCKET        --body <DownloadBucketName>
-gh variable set TENNIS_DOWNLOAD_DISTRIBUTION_ID --body <DownloadDistributionId>
-gh secret   set AWS_ROLE_TO_ASSUME            --body <PublishRoleArn>
-```
-
-Until all four are set the release workflow skips publishing and cuts a GitHub
-release only, so a tag never fails on missing infrastructure.
-
-**4. Cut a release.** `git tag v0.1.1 && git push origin v0.1.1`.
-
-The workflow tests, runs goreleaser, publishes to the bucket, invalidates the
-pointer paths, then re-downloads `/VERSION` and `/install.sh` from the edge to
-confirm the release is actually reachable before it goes green.
-
-**5. Point the docs at the new command** — README.md and
-`docs/content/docs/getting-started.mdx` still carry the version-pinned GitHub
-URL:
-
-```bash
-curl -fsSL https://get.example.sh/install.sh | sh
-```
+Do not edit the placeholder in `scripts/install.sh`. It has to stay
+unsubstituted in git; the workflow replaces it only in the copy it uploads.
 
 ## Notes
 
-- The publish role is scoped to `refs/tags/v*` on `satoricorp/tennis` and can
-  put and read objects but not delete them. A stolen token cannot erase the
-  release history that pinned installs still resolve against.
-- The bucket is versioned and set to `RETAIN`; deleting the stack leaves the
-  archives in place.
-- `install.sh` ships with a `TENNIS_DOWNLOAD_HOST` placeholder so the repo
-  never hardcodes a domain. The workflow substitutes the real host on upload
-  and fails if the placeholder survives.
-- Changing the domain means a redeploy plus updating `TENNIS_DOWNLOAD_HOST`;
-  the installer picks it up on the next release with no code change.
 - Users can pin a version (`TENNIS_VERSION=0.1.0`), redirect the install
   directory (`TENNIS_INSTALL_DIR`), or point at another host
   (`TENNIS_INSTALL_BASE_URL`) — that last one is how the installer is tested
-  against a local stand-in.
+  against a local stand-in in CI.
+- Changing the host means updating `TENNIS_DOWNLOAD_HOST` and cutting a
+  release; the installer picks it up on the next release with no code change.
