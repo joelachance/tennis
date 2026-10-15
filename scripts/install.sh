@@ -1,19 +1,43 @@
 #!/bin/sh
-# tennis installer. Fetches the release archive for this OS/arch from the
-# download host, verifies it against the checksums the release was published
-# with, and drops the binary in a bin directory.
+# tennis installer. Fetches the release archive for this OS/arch, verifies it
+# against the checksums the release was published with, and drops the binary in
+# a bin directory.
 #
-#   curl -fsSL https://TENNIS_DOWNLOAD_HOST/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/satoricorp/tennis/main/scripts/install.sh | sh
 #
-# The archive is fetched by version rather than from a "latest" alias: the
-# versioned key is immutable, so it caches at the CDN edge forever, and its
-# name matches the entry in the checksums.txt goreleaser signed it into. The
-# alias under /latest exists for Dockerfiles that want to skip the lookup.
+# Payloads come from the GitHub release by default, so this works with nothing
+# but curl. When the CDN download host is deployed the release workflow
+# substitutes it for the TENNIS_DOWNLOAD_HOST placeholder below, and the same
+# script then reads from there instead: no GitHub API call, no rate limit, and
+# an immutable URL that caches at the edge forever.
+#
+# Either way the archive is fetched by version rather than from a "latest"
+# alias, so its name matches the entry in the checksums.txt goreleaser signed
+# it into. The alias under /latest exists for Dockerfiles that want to skip the
+# lookup.
 set -eu
 
+# The placeholder the release workflow rewrites when it uploads. It is spelled
+# in two pieces on purpose: that substitution replaces every occurrence of the
+# whole token, so a single-piece copy would be rewritten too and the check
+# below could never tell a published script from an unpublished one.
+cdn_placeholder="https://TENNIS_DOWNLOAD_""HOST"
+
+repo="${TENNIS_REPO:-satoricorp/tennis}"
 base_url="${TENNIS_INSTALL_BASE_URL:-https://TENNIS_DOWNLOAD_HOST}"
 install_dir="${TENNIS_INSTALL_DIR:-$HOME/.local/bin}"
 version="${TENNIS_VERSION:-}"
+
+if [ "$base_url" = "$cdn_placeholder" ]; then
+  # No CDN deployed yet, so the placeholder is not a URL. Read straight from
+  # the GitHub release instead.
+  base_url="https://github.com/$repo/releases/download"
+  script_url="https://raw.githubusercontent.com/$repo/main/scripts/install.sh"
+else
+  script_url="$base_url/install.sh"
+fi
+base_url="${base_url%/}"
+script_url="${script_url%/}"
 
 fail() {
   echo "tennis install: $*" >&2
@@ -28,7 +52,7 @@ Downloads the tennis binary for this platform, checks it against the
 published SHA-256, and installs it.
 
 Usage:
-  curl -fsSL $base_url/install.sh | sh
+  curl -fsSL $script_url | sh
 
 Options:
   -h, --help      Show this help
@@ -37,6 +61,7 @@ Environment:
   TENNIS_VERSION           Version to install, e.g. 0.1.0 (default: latest)
   TENNIS_INSTALL_DIR       Install directory (default: ~/.local/bin)
   TENNIS_INSTALL_BASE_URL  Download base URL (default: $base_url)
+  TENNIS_REPO              GitHub owner/name (default: satoricorp/tennis)
 EOF
 }
 
@@ -65,6 +90,39 @@ download() {
   fi
 }
 
+# Print the newest released tag.
+#
+# The download host publishes a plain VERSION file. GitHub does not, so fall
+# back to the redirect that /releases/latest answers with and read the tag off
+# the last Location header: one request, no API token, no rate limit to
+# outrun. Redirects are followed because the canonical owner may differ from
+# the one in the URL. A pinned TENNIS_VERSION skips this entirely.
+latest_version() {
+  if download "$base_url/VERSION" "$tmp_dir/VERSION" 2>/dev/null; then
+    # Trim whitespace and any stray CR so a hand-edited VERSION still works.
+    tr -d ' \t\r\n' < "$tmp_dir/VERSION"
+    return 0
+  fi
+
+  url="https://github.com/$repo/releases/latest"
+  headers=""
+  if command -v curl >/dev/null 2>&1; then
+    headers="$(curl -fsSIL "$url" 2>/dev/null)"
+  elif command -v wget >/dev/null 2>&1; then
+    headers="$(wget -q -S --spider "$url" 2>&1)"
+  fi
+
+  # The tag is on the last Location header, not the first: the canonical owner
+  # can differ from the one in the URL.
+  location="$(printf '%s\n' "$headers" | tr -d '\r' |
+    awk 'tolower($1) == "location:" { loc = $2 } END { print loc }')"
+
+  case "$location" in
+    */tag/*) printf '%s\n' "${location##*/tag/}" ;;
+    *) return 1 ;;
+  esac
+}
+
 # Print the SHA-256 of a file, on macOS (shasum) or GNU (sha256sum).
 sha256_of() {
   if command -v shasum >/dev/null 2>&1; then
@@ -90,16 +148,13 @@ case "$(uname -m)" in
   *) fail "unsupported architecture: $(uname -m)" ;;
 esac
 
-base_url="${base_url%/}"
 tmp_dir="$(mktemp -d 2>/dev/null || mktemp -d -t tennis-install)"
 cleanup() { rm -rf "$tmp_dir"; }
 trap cleanup EXIT INT TERM
 
 if [ -z "$version" ]; then
-  download "$base_url/VERSION" "$tmp_dir/VERSION" ||
-    fail "cannot reach $base_url/VERSION"
-  # Trim whitespace and any stray CR so a hand-edited VERSION still works.
-  version="$(tr -d ' \t\r\n' < "$tmp_dir/VERSION")"
+  version="$(latest_version)" ||
+    fail "could not determine the latest version; set TENNIS_VERSION to pin one"
 fi
 version="${version#v}"
 [ -n "$version" ] || fail "could not determine the version to install"
