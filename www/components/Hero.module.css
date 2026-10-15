@@ -133,7 +133,7 @@
 }
 
 .installLine {
-  font-size: clamp(9px, 2.1vw, 11px);
+  font-size: clamp(11px, 3vw, 14px);
   white-space: pre-wrap;
   overflow-wrap: break-word;
   flex: 1 1 auto;

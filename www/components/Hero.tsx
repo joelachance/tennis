@@ -8,6 +8,7 @@ import styles from "./Hero.module.css";
 const REPO = "github.com/joelachance/tennis";
 const INSTALL =
   "curl -fsSL https://pub-dff7cf6c315440a58ea79dee7915d2c4.r2.dev/install.sh | sh";
+const INSTALL_DISPLAY = "curl -fsSL https://download.use.tennis";
 const ADD = "tennis add --chatgpt ~/Downloads/chatgpt-export.zip";
 const SEARCH = 'tennis search "What hotel did we stay at in Mexico last year?"';
 const SESSION = `${ADD}\n${SEARCH}`;
@@ -95,7 +96,7 @@ export default function Hero() {
 
         <div className={`${styles.block} ${styles.installBlock}`}>
           <code className={`${styles.line} ${styles.installLine}`}>
-            <span className={styles.prompt}>$</span> {INSTALL}
+            <span className={styles.prompt}>$</span> {INSTALL_DISPLAY}
           </code>
           <CopyButton value={INSTALL} label="Copy install command" />
         </div>
