@@ -7,3 +7,5 @@
 .yeet/
 # wrangler's local state for the site's Worker deployment
 /.wrangler/
+# npx drops a cache and a manifest here when wrangler runs from the repo root
+/node_modules/
