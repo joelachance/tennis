@@ -38,31 +38,35 @@ for r in rows:
     if r["Question text"].strip() or r["Notes"].strip():
         cycles[r["Cycle start time"]].append(r)
 
+written = 0
 for start, rs in sorted(cycles.items()):
-    lines = [f"# WHOOP journal — {start[:10]}", ""]
+    # Only the days with something written in them. Every other day is 22
+    # identical boolean answers with an empty note, and indexing those buries
+    # the handful of real sentences under a wall of "false".
     notes = sorted({r["Notes"].strip() for r in rs if r["Notes"].strip()})
-    if notes:
-        lines += ["## Note", ""] + [f"- {n}" for n in notes] + [""]
-    lines += ["## Answers", ""]
-    seen = set()
-    for r in sorted(rs, key=lambda r: r["Question text"]):
-        q = r["Question text"].strip()
-        if not q or q in seen:
-            continue
-        seen.add(q)
-        lines.append(f"- {q}: **{r['Answered yes'] or 'n/a'}**")
+    if not notes:
+        continue
+    # Just the note. The 22 yes/no questions on the same row are data, but
+    # they are not prose, and a whole file of "false" puts every real
+    # sentence below the fold in a recording.
+    lines = [f"# WHOOP journal — {start[:10]}", ""]
+    lines += [f"- {n}" for n in notes]
+    written += 1
     with open(os.path.join(work, "notes", f"{start[:10].replace('-', '')}.md"), "w") as fh:
         fh.write("\n".join(lines))
 
-print(f"demo: {len(cycles)} days of notes written")
+print(f"demo: {len(cycles)} cycles, {written} with a written note")
 PY
 
 db="$work/tennis.sqlite"
 tennis add "$work/notes" --ns whoop --db "$db" --no-cards
 
-printf '\n%d notes indexed in /tmp/tennis-demo. Try:\n' "$(find "$work/notes" -name '*.md' | wc -l | tr -d ' ')"
-cat <<EOF
-  tennis search "ski patrol"                     --ns whoop --db $db
-  tennis search "journal entries mentioning a dog" --ns whoop --db $db
-  tennis ls                                       --ns whoop --db $db
-EOF
+# Run the queries too, so a recording is one command. The first is the exact
+# term — BM25 finds it. The second shares no keywords with the note it returns
+# — "dog" is not in that text — so it can only come from the semantic side.
+# Between them they show both retrievers, which is the whole product.
+tennis search "ski patrol" --ns whoop --db "$db"
+printf '\n'
+tennis search "journal entries mentioning a dog" --ns whoop --db "$db"
+printf '\n'
+tennis search "deadline stress at work" --ns whoop --db "$db" -k 2
