@@ -36,11 +36,11 @@ Install one binary, point it at a folder, ask it a question. No API key, no serv
 
 ## Install
 
-A release binary really is one file:
-
 ```bash
-curl -sL https://github.com/satoricorp/tennis/releases/download/v0.2.0/tennis_0.2.0_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz | tar xz tennis
+curl -fsSL https://raw.githubusercontent.com/satoricorp/tennis/main/scripts/install.sh | sh
 ```
+
+That picks the archive for your OS and architecture, verifies it against the SHA-256 the release was published with, and installs it to `~/.local/bin`. Pin a version with `TENNIS_VERSION=0.2.0`, or change the directory with `TENNIS_INSTALL_DIR`.
 
 Or with Go:
 
@@ -544,17 +544,29 @@ tennis: removing "agents" takes its 2 documents (2 chunks) with it
 removed "agents"
 ```
 
+`tennis rm --ns agents` does the same thing and costs the same warning; see [tennis rm](#tennis-rm-serve-version).
+
 ## tennis rm, serve, version
 
 ```bash
 tennis rm /abs/path/to/auth.md                 # delete from the default namespace
 tennis rm e1 e2 --ns agents                    # ...or from a named one
+tennis rm --ns agents                         # no ids: remove the namespace itself
 tennis serve                                   # local HTTP API on 127.0.0.1:8817
 tennis serve --addr 127.0.0.1:9000
 tennis version                                 # tag and the commit it was built from
 ```
 
-`rm` takes document ids and reads `--ns` like `add` and `search` do; `tennis ns rm` is the one that removes a whole namespace. `rm` used to take the namespace first, and that spelling would still run — against the wrong namespace, deleting a document named after the right one — so it is refused rather than obeyed:
+`rm` takes document ids and reads `--ns` like `add` and `search` do. With no ids it removes the whole namespace instead, which is the same request as `tennis ns rm` — see [tennis ns](#tennis-ns) for what that costs. The flag has to be typed: an unflagged `tennis rm` resolves the namespace from `$TENNIS_NS`, and if that counted, a bare Enter against an exported `TENNIS_NS` would drop a namespace nobody named.
+
+```bash
+$ tennis rm --ns agents
+error: usage: tennis rm <id...> [--ns name]
+
+to remove a namespace instead: tennis rm --ns <name>
+```
+
+`rm` used to take the namespace first, and that spelling would still run — against the wrong namespace, deleting a document named after the right one — so it is refused rather than obeyed:
 
 ```bash
 $ tennis rm agents e1
@@ -596,7 +608,7 @@ COMMANDS
   add <path...>                index sessions or files
   search <query>               search
   ls [source]                  list what tennis has, newest first
-  rm <id...>                   delete documents
+  rm <id...>                   delete documents, or a whole namespace with --ns
   ns [list|create|rm]          manage namespaces
   version
 

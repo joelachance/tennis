@@ -22,7 +22,22 @@ Every search runs a keyword search (BM25, through SQLite's FTS5) and a semantic 
 
 ## Install (MacOS & Linux)
 
-**Option 1: Using Go** (needs Go 1.25 or newer)
+**Option 1: the installer** (needs curl and nothing else)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/satoricorp/tennis/main/scripts/install.sh | sh
+```
+
+It picks the archive for your OS and architecture, checks it against the SHA-256 that release was published with, and installs it to `~/.local/bin`. If that folder isn't on your `PATH` yet, it tells you the line to add.
+
+To pin a version, or install somewhere else:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/satoricorp/tennis/main/scripts/install.sh | TENNIS_VERSION=0.2.0 sh
+TENNIS_INSTALL_DIR=/usr/local/bin sh scripts/install.sh
+```
+
+**Option 2: Using Go** (needs Go 1.25 or newer)
 
 ```bash
 go install github.com/satoricorp/tennis/cmd/tennis@latest
@@ -30,7 +45,7 @@ go install github.com/satoricorp/tennis/cmd/tennis@latest
 
 This puts `tennis` in `$(go env GOPATH)/bin`. That folder must be on your `PATH`.
 
-**Option 2: Build from source**
+**Option 3: Build from source**
 
 ```bash
 git clone https://github.com/satoricorp/tennis

@@ -8,8 +8,8 @@ keep in sync. Verify every claim against `../README.md` before shipping it.*
 Convince a developer, in one screen, that Tennis finds things their grep
 can't — and that trying it costs one command and no API key.
 
-Primary CTA: **install** (`go install github.com/satoricorp/tennis/cmd/tennis@latest`).
-Secondary: **Releases** (a binary, for people without a Go toolchain) and
+Primary CTA: **install** (`curl -fsSL https://raw.githubusercontent.com/satoricorp/tennis/main/scripts/install.sh | sh`).
+Secondary: **Releases** (a binary, for people who would rather download one) and
 **GitHub** — https://github.com/satoricorp/tennis
 
 ## Tech
