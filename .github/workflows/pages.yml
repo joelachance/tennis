@@ -49,8 +49,13 @@ jobs:
 
       # --branch=main targets the Pages project's production branch, so this is
       # the live deployment rather than a preview.
+      #
+      # packageManager is explicit because there is no lockfile in the repo
+      # root for the action to infer from, and without it npx is asked to
+      # fetch wrangler — a question CI cannot answer, so it cancels.
       - uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: npm
           command: pages deploy www/out --project-name=tennis --branch=main
