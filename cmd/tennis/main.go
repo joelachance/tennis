@@ -881,28 +881,210 @@ func renderUnit(docs []tennis.Document, many bool) string {
 // ranker tags recede, the rank numbers take the accent, and the words — the
 // thing being searched for — stay exactly the terminal's own color.
 func renderResults(w io.Writer, results []tennis.Result, width int, st styler) {
-	// One result is an answer, not a list of one: there is no rank to compare
-	// it against, so it is printed as the words and where they came from.
 	if len(results) == 1 {
 		top := results[0]
-		fmt.Fprintln(w, wrap(top.Text, width, "> ", "  "))
-		fmt.Fprintf(w, "\n  %s\n", st.dim(citation(top)))
+		renderSingleResult(w, top, width, st)
 		return
 	}
 
-	// More than one and the ranking is the thing being shown, so every result
-	// is numbered — the best one included. Numbering the runners-up 2, 3, 4
-	// under an unnumbered answer reads as a list that lost its first item.
 	for i, r := range results {
 		if i > 0 {
 			fmt.Fprintln(w)
 		}
 		fmt.Fprintf(w, "%s %s  %s\n", st.ball(fmt.Sprintf("%2d.", i+1)), citation(r), st.dim("["+rankers(r)+"]"))
-		fmt.Fprintln(w, wrap(r.Text, width, "    ", "    "))
+		renderResultText(w, r, width, st)
 	}
 }
 
-// rankers names which side of the search found a result, and where it placed.
+func renderSingleResult(w io.Writer, r tennis.Result, width int, st styler) {
+	renderResultText(w, r, width, st)
+	fmt.Fprintf(w, "\n  %s\n", st.dim(citation(r)))
+}
+
+func renderResultText(w io.Writer, r tennis.Result, width int, st styler) {
+	kind, _ := r.Attributes["kind"].(string)
+	if kind == "file" {
+		renderFileResult(w, r, width, st)
+		return
+	}
+	fmt.Fprintln(w, wrap(r.Text, width, "> ", "  "))
+}
+
+func renderFileResult(w io.Writer, r tennis.Result, width int, st styler) {
+	name, _ := r.Attributes["name"].(string)
+	pathAttr, _ := r.Attributes["path"].(string)
+	modified, _ := r.Attributes["modified"].(string)
+	size, _ := r.Attributes["size"].(float64)
+
+	header := name
+	if pathAttr != "" && pathAttr != name {
+		header = pathAttr
+	}
+	if modified != "" {
+		if t, err := time.Parse(time.RFC3339, modified); err == nil {
+			header += "  " + st.dim(t.Format("2006-01-02"))
+		} else {
+			header += "  " + st.dim(modified[:10])
+		}
+	}
+	if size > 0 {
+		header += fmt.Sprintf("  %.0f KB", size/1024)
+	}
+	fmt.Fprintln(w, header)
+	fmt.Fprintln(w, strings.Repeat("─", min(width, utf8.RuneCountInString(header))))
+
+	text := r.Text
+	if looksLikeCSV(text) {
+		renderCSV(w, text, width)
+	} else if looksLikeJSON(text) {
+		renderJSON(w, text, width)
+	} else {
+		fmt.Fprintln(w, wrap(text, width, "> ", "  "))
+	}
+}
+
+func looksLikeCSV(s string) bool {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	if len(lines) < 2 {
+		return false
+	}
+	first := strings.TrimSpace(lines[0])
+	if strings.Contains(first, ",") && strings.Count(first, ",") >= 2 {
+		return true
+	}
+	return false
+}
+
+func looksLikeJSON(s string) bool {
+	s = strings.TrimSpace(s)
+	return (strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}")) ||
+		(strings.HasPrefix(s, "[") && strings.HasSuffix(s, "]"))
+}
+
+func renderCSV(w io.Writer, text string, width int) {
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	if len(lines) == 0 {
+		return
+	}
+	headers := parseCSVLine(lines[0])
+	rows := make([][]string, 0, len(lines)-1)
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		rows = append(rows, parseCSVLine(line))
+		if len(rows) >= 10 {
+			break
+		}
+	}
+
+	colWidths := make([]int, len(headers))
+	for i, h := range headers {
+		colWidths[i] = utf8.RuneCountInString(h)
+	}
+	for _, row := range rows {
+		for i, cell := range row {
+			if i < len(colWidths) {
+				colWidths[i] = max(colWidths[i], utf8.RuneCountInString(cell))
+			}
+		}
+	}
+
+	maxColWidth := 20
+	for i := range colWidths {
+		colWidths[i] = min(colWidths[i], maxColWidth)
+		if colWidths[i] < 3 {
+			colWidths[i] = 3
+		}
+	}
+
+	fmt.Fprint(w, "> ")
+	for i, h := range headers {
+		if i > 0 {
+			fmt.Fprint(w, " │ ")
+		}
+		fmt.Fprintf(w, "%-*s", colWidths[i], truncate(h, colWidths[i]))
+	}
+	fmt.Fprintln(w)
+
+	fmt.Fprint(w, "  ")
+	for i := range headers {
+		if i > 0 {
+			fmt.Fprint(w, "─┼─")
+		}
+		fmt.Fprint(w, strings.Repeat("─", colWidths[i]))
+	}
+	fmt.Fprintln(w)
+
+	for _, row := range rows {
+		fmt.Fprint(w, "> ")
+		for i, cell := range row {
+			if i >= len(headers) {
+				break
+			}
+			if i > 0 {
+				fmt.Fprint(w, " │ ")
+			}
+			fmt.Fprintf(w, "%-*s", colWidths[i], truncate(cell, colWidths[i]))
+		}
+		fmt.Fprintln(w)
+	}
+	if len(rows) > 10 {
+		fmt.Fprintln(w, "  ...")
+	}
+}
+
+func parseCSVLine(line string) []string {
+	var fields []string
+	var field strings.Builder
+	inQuotes := false
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		if c == '"' {
+			if inQuotes && i+1 < len(line) && line[i+1] == '"' {
+				field.WriteByte('"')
+				i++
+			} else {
+				inQuotes = !inQuotes
+			}
+		} else if c == ',' && !inQuotes {
+			fields = append(fields, field.String())
+			field.Reset()
+		} else {
+			field.WriteByte(c)
+		}
+	}
+	fields = append(fields, field.String())
+	return fields
+}
+
+func renderJSON(w io.Writer, text string, width int) {
+	var data any
+	if err := json.Unmarshal([]byte(text), &data); err != nil {
+		fmt.Fprintln(w, wrap(text, width, "> ", "  "))
+		return
+	}
+	pretty, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		fmt.Fprintln(w, wrap(text, width, "> ", "  "))
+		return
+	}
+	lines := strings.Split(string(pretty), "\n")
+	for i, line := range lines {
+		if i >= 30 {
+			fmt.Fprintln(w, "  ...")
+			break
+		}
+		prefix := "> "
+		if i > 0 {
+			prefix = "  "
+		}
+		fmt.Fprint(w, prefix)
+		fmt.Fprintln(w, wrap(line, width-2, "", "  "))
+}
+ }
+
+ // rankers names which side of the search found a result, and where it placed.
 // A hit only the semantic ranker surfaced is a different kind of answer than
 // one both agreed on, and the tag is what makes that legible.
 func rankers(r tennis.Result) string {
