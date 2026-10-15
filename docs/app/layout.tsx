@@ -8,7 +8,7 @@ import "./global.css";
 // Every route in this app is a docs page, so DocsLayout lives here rather than
 // in a nested layout. fetch() does not get basePath applied for us, so the
 // static search index is named in full; keep it in step with next.config.mjs.
-const SEARCH_API = "/tennis/docs/api/search";
+const SEARCH_API = "/docs/api/search";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

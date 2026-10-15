@@ -1,11 +1,10 @@
 import type { NextConfig } from "next";
 
-// Static export to GitHub Pages. The site is a project page, so it is served
-// from satoricorp.github.io/tennis and every asset needs that prefix —
-// assetPrefix is derived from basePath, so setting it here is enough.
+// Static export to Cloudflare Pages, served from the apex use.tennis. No
+// basePath: the prefix a GitHub project page needs does not exist on a real
+// domain, and leaving it set would nest the site under /tennis.
 const nextConfig: NextConfig = {
   output: "export",
-  basePath: "/tennis",
 };
 
 export default nextConfig;

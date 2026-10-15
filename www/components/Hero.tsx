@@ -6,14 +6,15 @@ import styles from "./Hero.module.css";
 
 // One source of truth for the strings that appear in more than one place.
 const REPO = "github.com/satoricorp/tennis";
-const INSTALL = `go install ${REPO}/cmd/tennis@latest`;
+const INSTALL =
+  "curl -fsSL https://raw.githubusercontent.com/satoricorp/tennis/main/scripts/install.sh | sh";
 const ADD = "tennis add --chatgpt ~/Downloads/chatgpt-export.zip";
 const SEARCH = 'tennis search "What hotel did we stay at in Mexico last year?"';
 const SESSION = `${ADD}\n${SEARCH}`;
 
 // The docs are their own Next app deployed under the same Pages site, so this
 // is an absolute path rather than a <Link>: basePath is not ours to infer here.
-const DOCS_URL = "/tennis/docs";
+const DOCS_URL = "/docs";
 const DISCORD_URL = "https://discord.gg/JpAggvxJJ";
 const GITHUB_URL = `https://${REPO}`;
 

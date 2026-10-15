@@ -12,8 +12,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # Never let two deploys race; queue instead of cancelling, so the last push
 # to land is the one that ends up live.
@@ -34,9 +32,9 @@ jobs:
             www/package-lock.json
             docs/package-lock.json
 
-      # Two Next apps, one Pages site. www is basePath /tennis and docs is
-      # basePath /tennis/docs, so each owns its own _next and the merge below
-      # is a plain copy with nothing to collide.
+      # Two Next apps, one Pages site. www owns the root and docs owns /docs,
+      # each with its own basePath so their _next directories cannot collide;
+      # the merge below is then a plain copy with nothing to collide.
       - run: npm ci
         working-directory: www
       - run: npm run build
@@ -49,19 +47,10 @@ jobs:
 
       - run: mv docs/out www/out/docs
 
-      - uses: actions/configure-pages@v5
-      # path is workspace-relative, so it keeps the www/ prefix that
-      # working-directory strips from the run steps above.
-      - uses: actions/upload-pages-artifact@v3
+      # --branch=main targets the Pages project's production branch, so this is
+      # the live deployment rather than a preview.
+      - uses: cloudflare/wrangler-action@v4
         with:
-          path: www/out
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy www/out --project-name=tennis --branch=main
