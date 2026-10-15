@@ -105,8 +105,11 @@ jobs:
           mutable="public, max-age=300"
 
           put() { # put <key> <file> <content-type> <cache-control>
+            # --remote is load-bearing. Without it wrangler writes to a local
+            # simulator, reports "Upload complete", and puts nothing in the
+            # bucket — a publish that looks like it worked.
             wrangler r2 object put "$BUCKET/$1" --file "$2" \
-              --content-type "$3" --cache-control "$4"
+              --content-type "$3" --cache-control "$4" --remote
           }
 
           # Versioned archives first, so /VERSION never points at a release
