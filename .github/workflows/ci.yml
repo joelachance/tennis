@@ -17,8 +17,8 @@ jobs:
           go-version: '1.25'
       - run: go vet ./...
       # Tracked files only. A plain `gofmt -l .` walks the filesystem rather
-      # than the module, so it would also parse the Go init templates aws-cdk
-      # ships under infra/node_modules once anyone runs npm install there.
+      # than the module, so it would also parse any Go files vendored under a
+      # node_modules directory once anyone runs npm install in www/ or docs/.
       - run: gofmt -l $(git ls-files '*.go') && test -z "$(gofmt -l $(git ls-files '*.go'))"
       # Tests that need the 123MB model skip themselves when it is absent,
       # and that was the whole root package and every end-to-end CLI test.
@@ -155,18 +155,28 @@ jobs:
           fi
           echo "installer verified: good release installs, tampered release refused"
 
-  # Catches stack mistakes at PR time; a full synth needs AWS credentials for
-  # the hosted-zone lookup, so this typechecks only.
-  infra:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: infra/package-lock.json
-      - run: npm ci
-        working-directory: infra
-      - run: npm run typecheck
-        working-directory: infra
+      # The checked-in installer must fall back to GitHub releases, and the copy
+      # the release workflow publishes must not. That test is the whole point
+      # of the two-piece sentinel: a single-piece one gets rewritten by the same
+      # sed and can never tell a published script from an unpublished one.
+      - name: Both install sources resolve correctly
+        run: |
+          set -euo pipefail
+          # Written to a file rather than piped into grep -q: grep exits on the
+          # first match, which SIGPIPEs the installer and fails the step under
+          # pipefail.
+          sh scripts/install.sh --help > "$RUNNER_TEMP/repo-help.txt"
+          grep -q 'https://raw.githubusercontent.com/.*/install.sh' \
+            "$RUNNER_TEMP/repo-help.txt"
+
+          sed 's|TENNIS_DOWNLOAD_HOST|127.0.0.1:8080|g' scripts/install.sh \
+            > "$RUNNER_TEMP/published.sh"
+          if grep -q 'TENNIS_DOWNLOAD_HOST}' "$RUNNER_TEMP/published.sh"; then
+            echo "placeholder default survived substitution" >&2
+            exit 1
+          fi
+          sh "$RUNNER_TEMP/published.sh" --help > "$RUNNER_TEMP/published-help.txt"
+          # Matched on the host alone: the scheme is still https://, because the
+          # substitution only replaces the host the placeholder stood for.
+          grep -q '127\.0\.0\.1:8080/install\.sh' "$RUNNER_TEMP/published-help.txt"
+          echo "installer sources verified: repo falls back to GitHub, published uses the host"
