@@ -5,3 +5,5 @@
 /tennis
 /dist/
 .yeet/
+# wrangler's local state for the site's Worker deployment
+/.wrangler/

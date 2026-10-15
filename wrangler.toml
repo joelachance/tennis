@@ -1,0 +1,16 @@
+# Cloudflare Workers project that serves the site. There is no Worker code:
+# assets.directory is the whole deployment, and Cloudflare serves those files
+# from its edge without invoking a Worker, so the marketing site and the docs
+# do not spend the Workers request allowance.
+#
+# The site is built by scripts/build-site.sh, which puts both Next apps into
+# www/out. The path has to match that script's output exactly — the build runs
+# first, so this is the directory that exists by the time wrangler runs.
+name = "tennis"
+compatibility_date = "2026-10-15"
+
+[assets]
+directory = "./www/out"
+# www/out/404.html is a real page from the Next build, so a bad URL gets the
+# site's own 404 rather than Cloudflare's bare one.
+not_found_handling = "404-page"
