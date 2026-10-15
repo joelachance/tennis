@@ -8,6 +8,11 @@
 # first, so this is the directory that exists by the time wrangler runs.
 name = "tennis"
 compatibility_date = "2026-10-15"
+# Pinned in the file rather than passed as CLOUDFLARE_ACCOUNT_ID, because
+# wrangler otherwise tries to enumerate the caller's accounts first and an
+# R2-scoped token is not allowed to list them. The account ID is public —
+# it is in every dashboard URL — so this is not a secret in the repo.
+account_id = "ffe71c557807256de791b2b5bb4ac077"
 
 [assets]
 directory = "./www/out"
