@@ -7,7 +7,7 @@ import styles from "./Hero.module.css";
 // One source of truth for the strings that appear in more than one place.
 const REPO = "github.com/joelachance/tennis";
 const INSTALL =
-  "curl -fsSL https://raw.githubusercontent.com/joelachance/tennis/main/scripts/install.sh | sh";
+  "curl -fsSL https://pub-dff7cf6c315440a58ea79dee7915d2c4.r2.dev/install.sh | sh";
 const ADD = "tennis add --chatgpt ~/Downloads/chatgpt-export.zip";
 const SEARCH = 'tennis search "What hotel did we stay at in Mexico last year?"';
 const SESSION = `${ADD}\n${SEARCH}`;

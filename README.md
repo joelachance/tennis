@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/satoricorp/tennis/actions/workflows/ci.yml"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/satoricorp/tennis/badges/tests.json" alt="Tests passing"></a>
+  <a href="https://github.com/joelachance/tennis/actions/workflows/ci.yml"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/joelachance/tennis/badges/tests.json" alt="Tests passing"></a>
   <a href="https://github.com/satoricorp/tennis/actions/workflows/ci.yml"><img src="https://github.com/satoricorp/tennis/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="https://github.com/satoricorp/tennis/releases"><img src="https://img.shields.io/github/v/release/satoricorp/tennis" alt="Latest release"></a>
   <a href="https://pkg.go.dev/github.com/satoricorp/tennis"><img src="https://pkg.go.dev/badge/github.com/satoricorp/tennis.svg" alt="Go reference"></a>
@@ -25,7 +25,7 @@ Every search runs a keyword search (BM25, through SQLite's FTS5) and a semantic 
 **Option 1: the installer** (needs curl and nothing else)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/satoricorp/tennis/main/scripts/install.sh | sh
+curl -fsSL https://pub-dff7cf6c315440a58ea79dee7915d2c4.r2.dev/install.sh | sh
 ```
 
 It picks the archive for your OS and architecture, checks it against the SHA-256 that release was published with, and installs it to `~/.local/bin`. If that folder isn't on your `PATH` yet, it tells you the line to add.
@@ -33,7 +33,7 @@ It picks the archive for your OS and architecture, checks it against the SHA-256
 To pin a version, or install somewhere else:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/satoricorp/tennis/main/scripts/install.sh | TENNIS_VERSION=0.2.0 sh
+curl -fsSL https://pub-dff7cf6c315440a58ea79dee7915d2c4.r2.dev/install.sh | TENNIS_VERSION=0.2.0 sh
 TENNIS_INSTALL_DIR=/usr/local/bin sh scripts/install.sh
 ```
 

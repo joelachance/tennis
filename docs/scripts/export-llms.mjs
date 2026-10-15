@@ -16,7 +16,12 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const contentDir = join(root, "content/docs");
 const outDir = join(root, "out");
-const ORIGIN = "https://satoricorp.github.io/tennis/docs";
+// Where the docs are actually served. Every URL in llms.txt is absolute, so a
+// stale value here publishes a file full of dead links rather than an obvious
+// failure — which is how this one sat pointing at GitHub Pages for months
+// after the site moved.
+const ORIGIN =
+  process.env.TENNIS_DOCS_ORIGIN ?? "https://tennis.jlachance1.workers.dev/docs";
 
 const treeOnly = process.argv.includes("--tree-only");
 

@@ -29,4 +29,10 @@ done
 rm -rf "$out/docs"
 mv "$root/docs/out" "$out/docs"
 
+# llms.txt belongs at the domain root by convention — that is the path an agent
+# probes first. The copy under /docs stays, because the links inside are
+# absolute and it costs nothing to serve the same bytes twice.
+cp "$out/docs/llms.txt" "$out/llms.txt"
+cp "$out/docs/llms-full.txt" "$out/llms-full.txt"
+
 printf 'site is in %s\n' "$out"

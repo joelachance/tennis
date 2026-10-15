@@ -3,7 +3,12 @@
 # against the checksums the release was published with, and drops the binary in
 # a bin directory.
 #
-#   curl -fsSL https://raw.githubusercontent.com/satoricorp/tennis/main/scripts/install.sh | sh
+#   curl -fsSL https://pub-dff7cf6c315440a58ea79dee7915d2c4.r2.dev/install.sh | sh
+#
+# The header comment above names the download host, which is where users
+# actually install from. This checked-in copy is the one GitHub serves, and it
+# falls back to reading the archive straight from the GitHub release until the
+# CDN host is substituted into it at release time.
 #
 # Payloads come from the GitHub release by default, so this works with nothing
 # but curl. When the CDN download host is deployed the release workflow

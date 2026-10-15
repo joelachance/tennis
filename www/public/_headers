@@ -1,0 +1,15 @@
+# Next fingerprints every path under /_next/static, so one URL always means
+# one set of bytes and a changed file means a changed name. That is what makes
+# caching them forever safe — and Workers otherwise sends
+# "max-age=0, must-revalidate" for everything, which costs a round trip per
+# file on every page view even though nothing has changed.
+#
+# The docs are a second Next app with their own /_next, so they need the rule
+# again. HTML keeps the default: it is the one thing that does change.
+#
+# https://developers.cloudflare.com/workers/static-assets/headers/
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/docs/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable

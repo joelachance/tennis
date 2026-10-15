@@ -8,7 +8,7 @@ keep in sync. Verify every claim against `../README.md` before shipping it.*
 Convince a developer, in one screen, that Tennis finds things their grep
 can't — and that trying it costs one command and no API key.
 
-Primary CTA: **install** (`curl -fsSL https://raw.githubusercontent.com/joelachance/tennis/main/scripts/install.sh | sh`).
+Primary CTA: **install** (`curl -fsSL https://pub-dff7cf6c315440a58ea79dee7915d2c4.r2.dev/install.sh | sh`).
 Secondary: **Releases** (a binary, for people who would rather download one) and
 **GitHub** — https://github.com/joelachance/tennis
 
