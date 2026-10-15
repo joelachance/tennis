@@ -128,14 +128,16 @@
    which is worth more than any amount of shrinking: at 11px the line fits in
    one row, and at the size that fits beside the button it would not. */
 .installBlock {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 10px 24px;
 }
 
 .installLine {
-  font-size: clamp(7px, 1.6vw, 9px);
-  white-space: nowrap;
+  font-size: clamp(9px, 2.1vw, 11px);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .pre {
