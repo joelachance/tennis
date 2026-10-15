@@ -94,7 +94,7 @@ export default function Hero() {
         </p>
 
         <div className={styles.block}>
-          <code className={styles.line}>
+          <code className={`${styles.line} ${styles.installLine}`}>
             <span className={styles.prompt}>$</span> {INSTALL}
           </code>
           <CopyButton value={INSTALL} label="Copy install command" />

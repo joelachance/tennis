@@ -122,6 +122,16 @@
   white-space: nowrap;
 }
 
+/* The download host is a pub-…r2.dev subdomain — 34 characters of hash the
+   visitor never typed and cannot be shortened away. Shrink this one line so
+   it fits rather than letting it scroll sideways, and wrap it on a phone,
+   where no font size would fit it. */
+.installLine {
+  font-size: clamp(10px, 2.35vw, 12px);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .pre {
   margin: 0;
   line-height: 1.85;
