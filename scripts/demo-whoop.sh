@@ -1,12 +1,13 @@
 #!/bin/sh
-# Stages a WHOOP export into a searchable Tennis namespace, for recording a
-# demo against real data instead of a fixture.
+# Stages a WHOOP export as plain notes, ready to index, for recording a demo
+# against real data instead of a fixture.
 #
-#   scripts/demo-whoop.sh [export.zip] [workdir]
+#   scripts/demo-whoop.sh [export.zip] [notesdir]
 #
 # The export is WHOOP's "My Data" download: journal_entries, physiological_
-# cycles, sleeps, and workouts. Nothing here is committed — the notes are
-# written to a work directory and the database lives beside them.
+# cycles, sleeps, and workouts. Nothing is committed and nothing is indexed —
+# this only writes the notes, so that the "tennis add" you type on camera is
+# a real one against your real database.
 #
 # The raw CSVs are not indexed. Each row repeats every other row on the same
 # day, so a search comes back as a wall of duplicated CSV and the actual note
@@ -15,20 +16,21 @@
 set -eu
 
 zip="${1:-$HOME/Documents/Health/my_whoop_data_2023_09_23.zip}"
-work="${2:-/tmp/tennis-demo}"
+notes="${2:-$HOME/Documents/Health/whoop-notes}"
 
 [ -f "$zip" ] || { echo "demo: no export at $zip" >&2; exit 1; }
 command -v tennis >/dev/null 2>&1 || { echo "demo: tennis not on PATH" >&2; exit 1; }
 
-rm -rf "$work"
-mkdir -p "$work/data" "$work/notes"
-unzip -qo "$zip" -d "$work/data"
+rm -rf "$notes"
+mkdir -p "$notes/.data"
+unzip -qo "$zip" -d "$notes/.data"
 
-python3 - "$work" <<'PY'
+python3 - "$notes" <<'PY'
 import csv, collections, glob, os, sys
 
-work = sys.argv[1]
-rows = list(csv.DictReader(open(os.path.join(work, "data/journal_entries.csv"))))
+# Not "notes": the loop below binds that name to the day's note lines.
+outdir = sys.argv[1]
+rows = list(csv.DictReader(open(os.path.join(outdir, ".data/journal_entries.csv"))))
 
 # One WHOOP cycle carries a row per question, and every row on that day
 # repeats the same free-text note. Grouping by cycle keeps the note once and
@@ -52,21 +54,19 @@ for start, rs in sorted(cycles.items()):
     lines = [f"# WHOOP journal — {start[:10]}", ""]
     lines += [f"- {n}" for n in notes]
     written += 1
-    with open(os.path.join(work, "notes", f"{start[:10].replace('-', '')}.md"), "w") as fh:
+    with open(os.path.join(outdir, f"{start[:10].replace('-', '')}.md"), "w") as fh:
         fh.write("\n".join(lines))
 
 print(f"demo: {len(cycles)} cycles, {written} with a written note")
 PY
 
-db="$work/tennis.sqlite"
-tennis add "$work/notes" --ns whoop --db "$db" --no-cards
+# Staging only. The indexing is left to you to type, because tennis add is the
+# thing worth showing — this just gets the export into a shape worth searching.
+rm -rf "$notes/.data"
 
-# Run the queries too, so a recording is one command. The first is the exact
-# term — BM25 finds it. The second shares no keywords with the note it returns
-# — "dog" is not in that text — so it can only come from the semantic side.
-# Between them they show both retrievers, which is the whole product.
-tennis search "ski patrol" --ns whoop --db "$db"
-printf '\n'
-tennis search "journal entries mentioning a dog" --ns whoop --db "$db"
-printf '\n'
-tennis search "deadline stress at work" --ns whoop --db "$db" -k 2
+printf '\n%d notes staged in %s. Now index and search them:\n' \
+  "$(find "$notes" -name '*.md' | wc -l | tr -d ' ')" "$notes"
+cat <<EOF
+  tennis add ~/Documents/Health/whoop-notes --ns whoop
+  tennis search "ski patrol" --ns whoop
+EOF

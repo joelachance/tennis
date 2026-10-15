@@ -93,7 +93,7 @@ export default function Hero() {
           summaries to easily review, and can be stored and used anywhere.
         </p>
 
-        <div className={styles.block}>
+        <div className={`${styles.block} ${styles.installBlock}`}>
           <code className={`${styles.line} ${styles.installLine}`}>
             <span className={styles.prompt}>$</span> {INSTALL}
           </code>

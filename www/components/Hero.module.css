@@ -123,13 +123,19 @@
 }
 
 /* The download host is a pub-…r2.dev subdomain — 34 characters of hash the
-   visitor never typed and cannot be shortened away. Shrink this one line so
-   it fits rather than letting it scroll sideways, and wrap it on a phone,
-   where no font size would fit it. */
+   visitor never typed and cannot be shortened away. This block stacks so the
+   command gets the full width instead of sharing a row with the copy button,
+   which is worth more than any amount of shrinking: at 11px the line fits in
+   one row, and at the size that fits beside the button it would not. */
+.installBlock {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
 .installLine {
-  font-size: clamp(10px, 2.35vw, 12px);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  font-size: clamp(7px, 1.6vw, 9px);
+  white-space: nowrap;
 }
 
 .pre {
