@@ -5,9 +5,9 @@ import BallBackground from "./BallBackground";
 import styles from "./Hero.module.css";
 
 // One source of truth for the strings that appear in more than one place.
-const REPO = "github.com/satoricorp/tennis";
+const REPO = "github.com/joelachance/tennis";
 const INSTALL =
-  "curl -fsSL https://raw.githubusercontent.com/satoricorp/tennis/main/scripts/install.sh | sh";
+  "curl -fsSL https://raw.githubusercontent.com/joelachance/tennis/main/scripts/install.sh | sh";
 const ADD = "tennis add --chatgpt ~/Downloads/chatgpt-export.zip";
 const SEARCH = 'tennis search "What hotel did we stay at in Mexico last year?"';
 const SESSION = `${ADD}\n${SEARCH}`;
@@ -157,8 +157,8 @@ export default function Hero() {
       </div>
 
       <p className={styles.copyright}>
-        © 2026 <span className={styles.dot} aria-hidden="true" /> Rhythm
-        Computer Co.
+        © 2026 <span className={styles.dot} aria-hidden="true" /> Most Fun
+        Corporation
       </p>
     </main>
   );
