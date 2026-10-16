@@ -158,8 +158,7 @@ export default function Hero() {
       </div>
 
       <p className={styles.copyright}>
-        © 2026 <span className={styles.dot} aria-hidden="true" /> Most Fun
-        Corporation
+        © 2026 <span className={styles.dot} aria-hidden="true" /> MOSTFUN
       </p>
     </main>
   );
