@@ -881,33 +881,40 @@ func renderUnit(docs []tennis.Document, many bool) string {
 // ranker tags recede, the rank numbers take the accent, and the words — the
 // thing being searched for — stay exactly the terminal's own color.
 func renderResults(w io.Writer, results []tennis.Result, width int, st styler) {
+	// One result is an answer, not a list of one: there is no rank to compare
+	// it against, so it is printed as the words and where they came from.
 	if len(results) == 1 {
 		top := results[0]
 		renderSingleResult(w, top, width, st)
 		return
 	}
 
+	// More than one and the ranking is the thing being shown, so every result
+	// is numbered — the best one included. Numbering the runners-up 2, 3, 4
+	// under an unnumbered answer reads as a list that lost its first item.
 	for i, r := range results {
 		if i > 0 {
 			fmt.Fprintln(w)
 		}
 		fmt.Fprintf(w, "%s %s  %s\n", st.ball(fmt.Sprintf("%2d.", i+1)), citation(r), st.dim("["+rankers(r)+"]"))
-		renderResultText(w, r, width, st)
+		renderResultText(w, r, width, st, "    ", "    ")
 	}
 }
 
 func renderSingleResult(w io.Writer, r tennis.Result, width int, st styler) {
-	renderResultText(w, r, width, st)
+	renderResultText(w, r, width, st, "> ", "  ")
 	fmt.Fprintf(w, "\n  %s\n", st.dim(citation(r)))
 }
 
-func renderResultText(w io.Writer, r tennis.Result, width int, st styler) {
+// renderResultText writes a result's words, opening with first and indenting
+// the rest: the "> " answer form for a lone result, a plain indent in a list.
+func renderResultText(w io.Writer, r tennis.Result, width int, st styler, first, rest string) {
 	kind, _ := r.Attributes["kind"].(string)
 	if kind == "file" {
 		renderFileResult(w, r, width, st)
 		return
 	}
-	fmt.Fprintln(w, wrap(r.Text, width, "> ", "  "))
+	fmt.Fprintln(w, wrap(r.Text, width, first, rest))
 }
 
 func renderFileResult(w io.Writer, r tennis.Result, width int, st styler) {
@@ -1081,10 +1088,10 @@ func renderJSON(w io.Writer, text string, width int) {
 		}
 		fmt.Fprint(w, prefix)
 		fmt.Fprintln(w, wrap(line, width-2, "", "  "))
+	}
 }
- }
 
- // rankers names which side of the search found a result, and where it placed.
+// rankers names which side of the search found a result, and where it placed.
 // A hit only the semantic ranker surfaced is a different kind of answer than
 // one both agreed on, and the tag is what makes that legible.
 func rankers(r tennis.Result) string {
